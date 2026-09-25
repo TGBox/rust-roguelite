@@ -9,7 +9,7 @@ use dungeon_gen::{
     room::{ROOM_HEIGHT, ROOM_WIDTH},
 };
 
-use crate::{TILE_SIZE, assets::GameAssets};
+use crate::{TILE_SIZE, assets::GameAssets, states::AppState};
 
 const TEST_ROOM: &str = "
     ###############
@@ -27,10 +27,24 @@ pub struct RoomPlugin;
 
 impl Plugin for RoomPlugin {
     fn build(&self, app: &mut App) {
-        let layout = RoomLayout::from_ascii(TEST_ROOM).expect("Testraum muss gültig sein");
-        app.insert_resource(CurrentRoom(layout))
-            .add_systems(Startup, spawn_room_tiles);
+        // `.chain()`: Erst die Ressource einfügen, dann die Kacheln daraus spawnen.
+        // Zwischen den beiden Systemen fügt Bevy automatisch einen Sync-Punkt ein,
+        // der die Commands anwendet – sonst gäbe es `CurrentRoom` noch nicht.
+        app.add_systems(
+            OnEnter(AppState::InGame),
+            (enter_room, spawn_room_tiles).chain(),
+        )
+        .add_systems(OnExit(AppState::InGame), leave_room);
     }
+}
+
+fn enter_room(mut commands: Commands) {
+    let layout = RoomLayout::from_ascii(TEST_ROOM).expect("Testraum muss gültig sein");
+    commands.insert_resource(CurrentRoom(layout));
+}
+
+fn leave_room(mut commands: Commands) {
+    commands.remove_resource::<CurrentRoom>();
 }
 
 /// Das Layout des Raums, in dem der Spieler gerade ist.
@@ -74,6 +88,7 @@ fn spawn_room_tiles(mut commands: Commands, room: Res<CurrentRoom>, assets: Res<
         };
         commands.spawn((
             RoomTile,
+            DespawnOnExit(AppState::InGame),
             Mesh2d(assets.tile_mesh.clone()),
             MeshMaterial2d(material.clone()),
             // z = 0: Kacheln liegen unter allem anderen.

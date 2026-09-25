@@ -13,6 +13,7 @@ use crate::{
     projectile::tear_bundle,
     room::tile_center,
     schedule::GameSet,
+    states::{AppState, InGameState},
 };
 
 /// Radius der Grafik (in Kacheln).
@@ -34,11 +35,14 @@ pub struct PlayerPlugin;
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<PlayerInput>()
-            .add_systems(Startup, spawn_player)
+            .add_systems(OnEnter(AppState::InGame), spawn_player)
+            .add_systems(OnEnter(InGameState::Dying), show_dead_player)
             // Eingabe einmal pro Bild lesen, direkt BEVOR die festen Ticks laufen.
             .add_systems(
                 RunFixedMainLoop,
-                read_input.in_set(RunFixedMainLoopSystems::BeforeFixedMainLoop),
+                read_input
+                    .in_set(RunFixedMainLoopSystems::BeforeFixedMainLoop)
+                    .run_if(in_state(InGameState::Playing)),
             )
             .add_systems(
                 FixedUpdate,
@@ -96,6 +100,7 @@ fn spawn_player(mut commands: Commands, assets: Res<GameAssets>) {
     let start = tile_center(GridPos::new(7, 4));
     commands.spawn((
         Name::new("Player"),
+        DespawnOnExit(AppState::InGame),
         Player,
         PlayerStats::default(),
         ShootCooldown::default(),
@@ -111,6 +116,16 @@ fn spawn_player(mut commands: Commands, assets: Res<GameAssets>) {
         Mesh2d(assets.player_mesh.clone()),
         MeshMaterial2d(assets.player_material.clone()),
     ));
+}
+
+/// Platzhalter-Todesanimation: Spieler rot färben. Echte Animation in M8.
+fn show_dead_player(
+    assets: Res<GameAssets>,
+    mut query: Query<&mut MeshMaterial2d<ColorMaterial>, With<Player>>,
+) {
+    for mut material in &mut query {
+        material.0 = assets.player_dead_material.clone();
+    }
 }
 
 /// `Local<T>` ist Zustand, der nur diesem System gehört und zwischen den

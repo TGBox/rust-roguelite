@@ -8,6 +8,7 @@ use crate::{
     assets::GameAssets,
     physics::{Body, BodyKind, TileHit, physics_body},
     schedule::GameSet,
+    states::AppState,
 };
 
 pub const TEAR_RADIUS_TILES: f32 = 0.15;
@@ -37,6 +38,7 @@ pub fn tear_bundle(
 ) -> impl Bundle {
     (
         Name::new("Tear"),
+        DespawnOnExit(AppState::InGame),
         Projectile {
             remaining: lifetime,
         },

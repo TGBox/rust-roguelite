@@ -11,6 +11,8 @@ mod player;
 mod projectile;
 mod room;
 mod schedule;
+mod states;
+mod ui;
 
 /// Kantenlänge einer Kachel in Weltkoordinaten (Pixel bei Zoom 1).
 pub const TILE_SIZE: f32 = 32.0;
@@ -35,6 +37,8 @@ fn main() {
         )
         .insert_resource(Time::<Fixed>::from_hz(FIXED_HZ))
         .add_plugins((
+            // Zuerst: andere Plugins hängen Systeme an diese Zustände.
+            states::StatesPlugin,
             schedule::SchedulePlugin,
             assets::GameAssetsPlugin,
             camera::CameraPlugin,
@@ -42,6 +46,7 @@ fn main() {
             physics::PhysicsPlugin,
             player::PlayerPlugin,
             projectile::ProjectilePlugin,
+            ui::UiPlugin,
             debug::DebugPlugin,
         ))
         .run();

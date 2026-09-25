@@ -27,6 +27,7 @@ pub struct GameAssets {
     pub pit: Handle<ColorMaterial>,
     pub player_mesh: Handle<Mesh>,
     pub player_material: Handle<ColorMaterial>,
+    pub player_dead_material: Handle<ColorMaterial>,
     pub tear_mesh: Handle<Mesh>,
     pub tear_material: Handle<ColorMaterial>,
 }
@@ -56,6 +57,7 @@ impl FromWorld for GameAssets {
             pit: materials.add(Color::srgb(0.02, 0.02, 0.03)),
             player_mesh,
             player_material: materials.add(Color::srgb(0.85, 0.75, 0.55)),
+            player_dead_material: materials.add(Color::srgb(0.55, 0.12, 0.12)),
             tear_mesh,
             tear_material: materials.add(Color::srgb(0.55, 0.75, 0.95)),
         }
