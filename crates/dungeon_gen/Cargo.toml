@@ -1,0 +1,12 @@
+[package]
+name = "dungeon_gen"
+description = "Engine-unabhängige Spiellogik: Raster, Räume, Etagen-Generierung."
+version.workspace = true
+edition.workspace = true
+
+# Bewusst KEINE Bevy-Dependency: diese Crate soll ohne Engine
+# kompilieren und in Millisekunden getestet werden können.
+[dependencies]
+
+[lints]
+workspace = true

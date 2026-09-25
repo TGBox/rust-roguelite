@@ -1,0 +1,22 @@
+[package]
+name = "game"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "rust-roguelite"
+path = "src/main.rs"
+
+[features]
+# Für die Entwicklung: `cargo run --features dev`
+#  - dynamic_linking: Bevy als DLL => inkrementelle Builds in Sekunden statt Minuten
+#  - dev: Dev-Tools, Debug-Infos, Asset-Hot-Reload (file_watcher)
+# Niemals für Release-Builds verwenden.
+dev = ["bevy/dynamic_linking", "bevy/dev"]
+
+[dependencies]
+bevy.workspace = true
+dungeon_gen.workspace = true
+
+[lints]
+workspace = true

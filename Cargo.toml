@@ -1,0 +1,35 @@
+# Workspace-Root: definiert nur Mitglieder, gemeinsame Metadaten,
+# Dependency-Versionen und Build-Profile. Kein eigenes Package.
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+
+# Versionen zentral pflegen; Member-Crates schreiben nur `bevy.workspace = true`.
+[workspace.dependencies]
+# Nur die Feature-Sammlungen, die wir brauchen (kein 3D => deutlich kürzere Builds).
+bevy = { version = "0.19", default-features = false, features = ["2d", "ui", "audio"] }
+dungeon_gen = { path = "crates/dungeon_gen" }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+# Bevy-Systeme haben naturgemäß viele Parameter und komplexe Query-Typen.
+too_many_arguments = "allow"
+type_complexity = "allow"
+
+# Eigener Code: leicht optimiert (schnell kompiliert, aber nicht quälend langsam).
+[profile.dev]
+opt-level = 1
+
+# Dependencies (Bevy & Co.): voll optimiert. Wird nur einmal gebaut und dann gecacht.
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.release]
+codegen-units = 1
+lto = "thin"

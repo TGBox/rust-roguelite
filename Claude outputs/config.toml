@@ -1,0 +1,5 @@
+# Optional: schnellerer Linker unter Windows.
+# `rust-lld` wird mit jeder rustup-Toolchain mitgeliefert. Falls es Linker-Fehler gibt,
+# diese zwei Zeilen einfach wieder auskommentieren.
+[target.x86_64-pc-windows-msvc]
+linker = "rust-lld.exe"
