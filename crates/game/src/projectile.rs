@@ -1,11 +1,13 @@
 //! Projektile („Tears“): fliegen geradeaus, verschwinden nach Ablauf
-//! ihrer Lebenszeit oder beim Aufprall auf Wand/Fels.
+//! ihrer Lebenszeit oder beim Aufprall auf Wand/Fels. Treffer auf
+//! Spieler/Gegner behandelt `combat.rs`.
 
 use bevy::prelude::*;
 
 use crate::{
     TILE_SIZE,
     assets::GameAssets,
+    combat::Faction,
     physics::{Body, BodyKind, TileHit, physics_body},
     room::RoomScoped,
     schedule::GameSet,
@@ -29,24 +31,39 @@ impl Plugin for ProjectilePlugin {
 pub struct Projectile {
     /// Verbleibende Flugzeit (s).
     pub remaining: f32,
+    pub damage: i32,
+    /// Wer geschossen hat. Trifft nur die jeweils andere Seite.
+    pub faction: Faction,
 }
 
-pub fn tear_bundle(
-    position: Vec2,
-    velocity: Vec2,
-    lifetime: f32,
-    assets: &GameAssets,
-) -> impl Bundle {
+/// Alle Parameter eines Schusses. Eine Struktur statt sechs Funktionsargumenten:
+/// Die Aufrufer benennen jeden Wert, Verwechslungen sind ausgeschlossen.
+#[derive(Debug, Clone, Copy)]
+pub struct Shot {
+    pub position: Vec2,
+    pub velocity: Vec2,
+    pub lifetime: f32,
+    pub damage: i32,
+    pub faction: Faction,
+}
+
+pub fn shot_bundle(shot: Shot, assets: &GameAssets) -> impl Bundle {
+    let material = match shot.faction {
+        Faction::Player => &assets.tear_material,
+        Faction::Enemy => &assets.enemy_shot_material,
+    };
     (
-        Name::new("Tear"),
+        Name::new("Shot"),
         DespawnOnExit(AppState::InGame),
         RoomScoped,
         Projectile {
-            remaining: lifetime,
+            remaining: shot.lifetime,
+            damage: shot.damage,
+            faction: shot.faction,
         },
         physics_body(
-            position,
-            velocity,
+            shot.position,
+            shot.velocity,
             Body {
                 half_size: Vec2::splat(TEAR_RADIUS_TILES * TILE_SIZE),
                 kind: BodyKind::Projectile,
@@ -54,7 +71,7 @@ pub fn tear_bundle(
             5.0,
         ),
         Mesh2d(assets.tear_mesh.clone()),
-        MeshMaterial2d(assets.tear_material.clone()),
+        MeshMaterial2d(material.clone()),
     )
 }
 
@@ -68,7 +85,7 @@ fn tick_lifetime(
         projectile.remaining -= dt;
         if projectile.remaining <= 0.0 {
             // `try_despawn`: kein Warn-Log, falls dasselbe Projektil im selben
-            // Tick auch durch einen Wandtreffer entfernt wird.
+            // Tick auch durch einen Treffer entfernt wurde.
             commands.entity(entity).try_despawn();
         }
     }

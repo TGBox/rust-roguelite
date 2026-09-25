@@ -8,7 +8,7 @@ use bevy::prelude::*;
 
 use crate::{
     TILE_SIZE,
-    enemy::{BOSS_HALF_TILES, DUMMY_HALF_TILES},
+    enemy::{BOSS_HALF_TILES, ENEMY_HALF_TILES},
     player::PLAYER_RADIUS_TILES,
     projectile::TEAR_RADIUS_TILES,
 };
@@ -39,8 +39,13 @@ pub struct GameAssets {
     pub tear_material: Handle<ColorMaterial>,
     pub enemy_mesh: Handle<Mesh>,
     pub boss_mesh: Handle<Mesh>,
-    pub enemy_material: Handle<ColorMaterial>,
+    pub chaser_material: Handle<ColorMaterial>,
+    pub shooter_material: Handle<ColorMaterial>,
+    pub charger_material: Handle<ColorMaterial>,
     pub boss_material: Handle<ColorMaterial>,
+    pub enemy_shot_material: Handle<ColorMaterial>,
+    /// Kurzes weißes Aufblitzen bei Treffern.
+    pub flash_material: Handle<ColorMaterial>,
 }
 
 /// `FromWorld` statt `Default`: Wir brauchen Zugriff auf andere Ressourcen
@@ -57,7 +62,7 @@ impl FromWorld for GameAssets {
                 meshes.add(Circle::new(PLAYER_RADIUS_TILES * TILE_SIZE)),
                 meshes.add(Circle::new(TEAR_RADIUS_TILES * TILE_SIZE)),
                 meshes.add(Rectangle::from_size(Vec2::splat(
-                    DUMMY_HALF_TILES * 2.0 * TILE_SIZE,
+                    ENEMY_HALF_TILES * 2.0 * TILE_SIZE,
                 ))),
                 meshes.add(Rectangle::from_size(Vec2::splat(
                     BOSS_HALF_TILES * 2.0 * TILE_SIZE,
@@ -81,8 +86,12 @@ impl FromWorld for GameAssets {
             tear_material: materials.add(Color::srgb(0.55, 0.75, 0.95)),
             enemy_mesh,
             boss_mesh,
-            enemy_material: materials.add(Color::srgb(0.75, 0.25, 0.25)),
-            boss_material: materials.add(Color::srgb(0.55, 0.15, 0.45)),
+            chaser_material: materials.add(Color::srgb(0.78, 0.25, 0.22)),
+            shooter_material: materials.add(Color::srgb(0.90, 0.55, 0.15)),
+            charger_material: materials.add(Color::srgb(0.35, 0.40, 0.85)),
+            boss_material: materials.add(Color::srgb(0.60, 0.15, 0.50)),
+            enemy_shot_material: materials.add(Color::srgb(0.95, 0.35, 0.30)),
+            flash_material: materials.add(Color::srgb(1.0, 1.0, 1.0)),
         }
     }
 }

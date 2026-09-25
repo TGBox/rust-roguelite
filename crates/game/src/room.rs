@@ -76,6 +76,15 @@ impl CurrentRoom {
         GridPos::new(t.x as i32, t.y as i32)
     }
 
+    /// Freie Linie zwischen zwei Weltpunkten für diese Art von Körper?
+    pub fn line_of_sight(&self, from: Vec2, to: Vec2, kind: BodyKind) -> bool {
+        dungeon_gen::pathing::line_of_sight(
+            self.world_to_tile_space(from).to_array(),
+            self.world_to_tile_space(to).to_array(),
+            |p| self.blocks(p, kind),
+        )
+    }
+
     /// Blockiert die Kachel diese Art von Körper? Verschlossene Türen
     /// sind für Läufer wie Wände.
     pub fn blocks(&self, pos: GridPos, kind: BodyKind) -> bool {

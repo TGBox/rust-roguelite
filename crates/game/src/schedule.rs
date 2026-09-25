@@ -14,9 +14,11 @@ pub enum GameSet {
     Snapshot,
     /// Spieler- und KI-Entscheidungen: Geschwindigkeit setzen, Schüsse erzeugen.
     Control,
-    /// Bewegen und Kollision auflösen.
+    /// Bewegen und Kollision mit dem Raum auflösen.
     Physics,
-    /// Auf Ereignisse reagieren und Aufräumen (Lebenszeit, Treffer).
+    /// Treffer erkennen, Schaden anwenden, Tode behandeln.
+    Combat,
+    /// Aufräumen und Folgen (Lebenszeit, Türen, Raumwechsel).
     Cleanup,
 }
 
@@ -24,10 +26,11 @@ pub struct SchedulePlugin;
 
 impl Plugin for SchedulePlugin {
     fn build(&self, app: &mut App) {
-        const ALL: [GameSet; 4] = [
+        const ALL: [GameSet; 5] = [
             GameSet::Snapshot,
             GameSet::Control,
             GameSet::Physics,
+            GameSet::Combat,
             GameSet::Cleanup,
         ];
 
@@ -38,13 +41,14 @@ impl Plugin for SchedulePlugin {
                 GameSet::Snapshot,
                 GameSet::Control,
                 GameSet::Physics,
+                GameSet::Combat,
                 GameSet::Cleanup,
             )
                 .chain(),
         );
 
         // Doppelt abgesichert zur angehaltenen virtuellen Zeit:
-        // In Menüs, Pause und beim Sterben laufen diese Systeme garantiert nie.
+        // In Menüs, Pause, Raumwechsel und beim Sterben laufen diese Systeme nie.
         for set in ALL {
             app.configure_sets(FixedUpdate, set.run_if(in_state(InGameState::Playing)));
         }

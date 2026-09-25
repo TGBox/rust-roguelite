@@ -5,6 +5,7 @@ use bevy::prelude::*;
 
 mod assets;
 mod camera;
+mod combat;
 mod debug;
 mod enemy;
 mod physics;
@@ -51,6 +52,7 @@ fn main() {
             player::PlayerPlugin,
             projectile::ProjectilePlugin,
             enemy::EnemyPlugin,
+            combat::CombatPlugin,
             transition::TransitionPlugin,
             ui::UiPlugin,
             debug::DebugPlugin,

@@ -1,4 +1,4 @@
-//! Benutzeroberfläche: Menüs und Minimap. In M8 kommt das HUD dazu.
+//! Benutzeroberfläche: Menüs, Minimap und Herz-Anzeige.
 //!
 //! Jeder Button trägt eine `MenuAction`. Ein einziges System reagiert auf
 //! alle Buttons – die Screens beschreiben nur, *was* ein Button tut,
@@ -8,6 +8,7 @@ use bevy::prelude::*;
 
 use crate::states::{AppState, InGameState};
 
+mod hud;
 mod menus;
 mod minimap;
 
@@ -15,7 +16,7 @@ pub struct UiPlugin;
 
 impl Plugin for UiPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins((menus::MenusPlugin, minimap::MinimapPlugin))
+        app.add_plugins((menus::MenusPlugin, minimap::MinimapPlugin, hud::HudPlugin))
             .add_systems(Update, (button_visuals, button_actions));
     }
 }

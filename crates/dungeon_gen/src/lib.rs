@@ -7,6 +7,7 @@
 pub mod collision;
 pub mod floor;
 pub mod grid;
+pub mod pathing;
 pub mod rng;
 pub mod room;
 pub mod spawns;
@@ -16,3 +17,4 @@ pub use floor::{Floor, RoomInfo, RoomKind};
 pub use grid::{Direction, GridPos};
 pub use rng::{Rng, RunSeed};
 pub use room::{RoomLayout, Tile};
+pub use spawns::{EnemyKind, Spawn};

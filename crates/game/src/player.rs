@@ -9,8 +9,9 @@ use dungeon_gen::room::CENTER;
 use crate::{
     TILE_SIZE,
     assets::GameAssets,
+    combat::{BaseMaterial, Faction, Health, Invulnerable},
     physics::{Body, BodyKind, Position, Velocity, physics_body},
-    projectile::tear_bundle,
+    projectile::{Shot, shot_bundle},
     room::CurrentRoom,
     schedule::GameSet,
     states::{AppState, InGameState},
@@ -20,6 +21,8 @@ use crate::{
 pub const PLAYER_RADIUS_TILES: f32 = 0.4;
 /// Hitbox bewusst kleiner als die Grafik: fühlt sich fairer an.
 const PLAYER_HALF_TILES: f32 = 0.3;
+/// Leben in halben Herzen.
+pub const PLAYER_MAX_HEALTH: i32 = 6;
 /// Anteil der Spielergeschwindigkeit, den ein Schuss mitnimmt.
 const SHOT_INHERIT_VELOCITY: f32 = 0.3;
 
@@ -68,6 +71,8 @@ pub struct PlayerStats {
     pub shot_speed: f32,
     /// Reichweite (Kacheln).
     pub range: f32,
+    /// Schaden pro Schuss.
+    pub damage: i32,
 }
 
 impl Default for PlayerStats {
@@ -78,6 +83,7 @@ impl Default for PlayerStats {
             fire_delay: 0.35,
             shot_speed: 9.0,
             range: 6.5,
+            damage: 2,
         }
     }
 }
@@ -102,6 +108,11 @@ pub fn spawn_player(mut commands: Commands, assets: Res<GameAssets>, room: Res<C
         Name::new("Player"),
         DespawnOnExit(AppState::InGame),
         Player,
+        Faction::Player,
+        // Lebenspunkte in halben Herzen: 6 = drei volle Herzen.
+        Health::full(PLAYER_MAX_HEALTH),
+        Invulnerable::default(),
+        BaseMaterial(assets.player_material.clone()),
         PlayerStats::default(),
         ShootCooldown::default(),
         physics_body(
@@ -121,10 +132,12 @@ pub fn spawn_player(mut commands: Commands, assets: Res<GameAssets>, room: Res<C
 /// Platzhalter-Todesanimation: Spieler rot färben. Echte Animation in M8.
 fn show_dead_player(
     assets: Res<GameAssets>,
-    mut query: Query<&mut MeshMaterial2d<ColorMaterial>, With<Player>>,
+    mut query: Query<(&mut MeshMaterial2d<ColorMaterial>, &mut Visibility), With<Player>>,
 ) {
-    for mut material in &mut query {
+    for (mut material, mut visibility) in &mut query {
         material.0 = assets.player_dead_material.clone();
+        // Falls der Tod mitten im Blinken passiert.
+        *visibility = Visibility::Inherited;
     }
 }
 
@@ -208,6 +221,15 @@ fn player_shoot(
         let speed = stats.shot_speed * TILE_SIZE;
         let velocity = dir * speed + vel.0 * SHOT_INHERIT_VELOCITY;
         let lifetime = stats.range * TILE_SIZE / speed;
-        commands.spawn(tear_bundle(pos.0, velocity, lifetime, &assets));
+        commands.spawn(shot_bundle(
+            Shot {
+                position: pos.0,
+                velocity,
+                lifetime,
+                damage: stats.damage,
+                faction: Faction::Player,
+            },
+            &assets,
+        ));
     }
 }

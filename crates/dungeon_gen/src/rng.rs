@@ -117,6 +117,27 @@ impl Rng {
         }
     }
 
+    /// Index gemäß Gewichten: `[50, 25, 25]` liefert 0 in etwa der Hälfte der Fälle.
+    ///
+    /// # Panics
+    /// Wenn alle Gewichte 0 sind oder die Liste leer ist.
+    pub fn weighted_index(&mut self, weights: &[u32]) -> usize {
+        let total: u64 = weights.iter().map(|&w| u64::from(w)).sum();
+        assert!(
+            total > 0,
+            "weighted_index braucht mindestens ein Gewicht > 0"
+        );
+        let mut roll = self.below(total);
+        for (i, &w) in weights.iter().enumerate() {
+            let w = u64::from(w);
+            if roll < w {
+                return i;
+            }
+            roll -= w;
+        }
+        unreachable!("roll < total ist garantiert")
+    }
+
     /// Fisher-Yates-Mischung.
     pub fn shuffle<T>(&mut self, items: &mut [T]) {
         for i in (1..items.len()).rev() {
@@ -274,6 +295,18 @@ mod tests {
             let u = rng.unit();
             assert!((0.0..1.0).contains(&u));
         }
+    }
+
+    #[test]
+    fn weighted_index_respects_weights() {
+        let mut rng = Rng::from_seed(3);
+        let mut counts = [0u32; 3];
+        for _ in 0..40_000 {
+            counts[rng.weighted_index(&[2, 0, 6])] += 1;
+        }
+        assert_eq!(counts[1], 0, "Gewicht 0 darf nie gewählt werden");
+        assert!((9_000..11_000).contains(&counts[0]), "{counts:?}");
+        assert!((29_000..31_000).contains(&counts[2]), "{counts:?}");
     }
 
     #[test]
