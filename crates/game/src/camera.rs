@@ -3,14 +3,15 @@
 use bevy::{camera::ScalingMode, prelude::*};
 use dungeon_gen::room::{ROOM_HEIGHT, ROOM_WIDTH};
 
-use crate::TILE_SIZE;
+use crate::{TILE_SIZE, states::AppState};
 
 pub struct CameraPlugin;
 
 impl Plugin for CameraPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(ClearColor(Color::srgb(0.05, 0.05, 0.07)))
-            .add_systems(Startup, spawn_camera);
+            .add_systems(Startup, spawn_camera)
+            .add_systems(OnEnter(AppState::InGame), reset_camera);
     }
 }
 
@@ -39,4 +40,10 @@ fn spawn_camera(mut commands: Commands) {
             ..OrthographicProjection::default_2d()
         }),
     ));
+}
+
+/// Jeder Run beginnt im Startraum, dessen Mitte der Weltursprung ist.
+fn reset_camera(mut camera: Single<&mut Transform, With<MainCamera>>) {
+    camera.translation.x = 0.0;
+    camera.translation.y = 0.0;
 }

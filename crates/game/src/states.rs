@@ -7,6 +7,7 @@
 //!
 //! InGameState (existiert nur während AppState::InGame):
 //!              Playing ⇄ Paused
+//!              Playing ──▶ RoomTransition ──▶ Playing
 //!              Playing ──▶ Dying ──(1 s)──▶ AppState::GameOver
 //! ```
 //!
@@ -55,6 +56,8 @@ pub enum InGameState {
     #[default]
     Playing,
     Paused,
+    /// Kamera schwenkt zum Nachbarraum. Spiellogik steht still.
+    RoomTransition,
     /// Kurze Pause nach dem Tod, bevor der Game-Over-Screen kommt.
     Dying,
 }
@@ -83,8 +86,8 @@ fn toggle_pause(
     match state.get() {
         InGameState::Playing => next.set(InGameState::Paused),
         InGameState::Paused => next.set(InGameState::Playing),
-        // Während des Sterbens gibt es kein Pausemenü.
-        InGameState::Dying => {}
+        // Während Raumwechsel und Sterben gibt es kein Pausemenü.
+        InGameState::RoomTransition | InGameState::Dying => {}
     }
 }
 

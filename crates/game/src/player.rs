@@ -4,14 +4,14 @@
 //! Richtungen. Hält man mehrere Pfeiltasten, gewinnt die zuletzt gedrückte.
 
 use bevy::prelude::*;
-use dungeon_gen::GridPos;
+use dungeon_gen::room::CENTER;
 
 use crate::{
     TILE_SIZE,
     assets::GameAssets,
     physics::{Body, BodyKind, Position, Velocity, physics_body},
     projectile::tear_bundle,
-    room::tile_center,
+    room::CurrentRoom,
     schedule::GameSet,
     states::{AppState, InGameState},
 };
@@ -35,7 +35,6 @@ pub struct PlayerPlugin;
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<PlayerInput>()
-            .add_systems(OnEnter(AppState::InGame), spawn_player)
             .add_systems(OnEnter(InGameState::Dying), show_dead_player)
             // Eingabe einmal pro Bild lesen, direkt BEVOR die festen Ticks laufen.
             .add_systems(
@@ -96,8 +95,9 @@ pub struct PlayerInput {
     pub shoot_dir: Option<Vec2>,
 }
 
-fn spawn_player(mut commands: Commands, assets: Res<GameAssets>) {
-    let start = tile_center(GridPos::new(7, 4));
+/// Läuft in der Kette aus `run.rs`, nachdem der erste Raum existiert.
+pub fn spawn_player(mut commands: Commands, assets: Res<GameAssets>, room: Res<CurrentRoom>) {
+    let start = room.tile_center(CENTER);
     commands.spawn((
         Name::new("Player"),
         DespawnOnExit(AppState::InGame),

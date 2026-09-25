@@ -9,6 +9,7 @@ pub mod floor;
 pub mod grid;
 pub mod rng;
 pub mod room;
+pub mod spawns;
 pub mod templates;
 
 pub use floor::{Floor, RoomInfo, RoomKind};

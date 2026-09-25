@@ -118,9 +118,141 @@ fn tile_span(center: f32, half: f32) -> (i32, i32) {
     )
 }
 
+/// Einstellungen für die Ecken-Korrektur.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Nudge {
+    /// Größter seitlicher Versatz, nach dem gesucht wird (Kacheln).
+    pub max_offset: f32,
+    /// Größter tatsächlicher Versatz pro Aufruf (Kacheln) – sorgt für ein
+    /// sanftes Hineingleiten statt eines Sprungs.
+    pub max_step: f32,
+}
+
+/// Wie [`move_and_slide`], aber mit **Ecken-Korrektur** („corner correction“):
+///
+/// Wird die Bewegung auf einer Achse blockiert, sucht die Funktion quer dazu
+/// den kleinsten Versatz (bis `nudge.max_offset`), bei dem der Weg frei wäre –
+/// typischerweise eine Türlücke oder die Kante eines Felsens. Dorthin wird der
+/// Körper um höchstens `nudge.max_step` geschoben. Über mehrere Ticks gleitet
+/// er so in die Lücke, statt an der Ecke hängen zu bleiben.
+///
+/// Gegen die Eingabe wird nie geschoben: Bewegt sich der Körper auf der
+/// Querachse selbst, muss der Versatz in dieselbe Richtung zeigen.
+pub fn move_and_slide_nudged(
+    center: [f32; 2],
+    half: [f32; 2],
+    delta: [f32; 2],
+    nudge: Nudge,
+    is_solid: impl Fn(GridPos) -> bool,
+) -> MoveResult {
+    let mut result = move_and_slide(center, half, delta, &is_solid);
+
+    for axis in 0..2 {
+        let blocked = if axis == 0 {
+            result.hit_x
+        } else {
+            result.hit_y
+        };
+        if !blocked || delta[axis] == 0.0 {
+            continue;
+        }
+        let other = 1 - axis;
+        // Kleiner Test-Schritt in die blockierte Richtung.
+        let probe = delta[axis].signum() * PROBE;
+        let Some(offset) = find_nudge(
+            result.center,
+            half,
+            probe,
+            axis,
+            nudge.max_offset,
+            &is_solid,
+        ) else {
+            continue;
+        };
+        if delta[other] != 0.0 && delta[other].signum() != offset.signum() {
+            continue;
+        }
+        let step = offset.signum() * offset.abs().min(nudge.max_step);
+        let (c, _) = sweep_axis(result.center, half, step, other, &is_solid);
+        result.center = c;
+    }
+    result
+}
+
+/// Länge des Test-Schritts in die Wand hinein (Kacheln).
+const PROBE: f32 = 0.05;
+/// Suchraster für den Versatz (Kacheln).
+const NUDGE_SEARCH_STEP: f32 = 0.02;
+
+/// Kleinster Versatz quer zu `axis`, bei dem der Körper frei steht **und**
+/// sich um `probe` weiter in Bewegungsrichtung schieben ließe.
+fn find_nudge(
+    center: [f32; 2],
+    half: [f32; 2],
+    probe: f32,
+    axis: usize,
+    max_offset: f32,
+    is_solid: &impl Fn(GridPos) -> bool,
+) -> Option<f32> {
+    let other = 1 - axis;
+    let steps = (max_offset / NUDGE_SEARCH_STEP).round() as u32;
+    for i in 1..=steps {
+        let k = i as f32 * NUDGE_SEARCH_STEP;
+        for sign in [1.0, -1.0] {
+            let mut shifted = center;
+            shifted[other] += sign * k;
+            if overlaps_solid(shifted, half, is_solid) {
+                continue;
+            }
+            let mut probed = shifted;
+            probed[axis] += probe;
+            if !overlaps_solid(probed, half, is_solid) {
+                return Some(sign * k);
+            }
+        }
+    }
+    None
+}
+
+/// Überlappt das Rechteck irgendeine solide Kachel?
+fn overlaps_solid(center: [f32; 2], half: [f32; 2], is_solid: &impl Fn(GridPos) -> bool) -> bool {
+    let (x_min, x_max) = tile_span(center[0], half[0]);
+    let (y_min, y_max) = tile_span(center[1], half[1]);
+    (x_min..=x_max).any(|x| (y_min..=y_max).any(|y| is_solid(GridPos::new(x, y))))
+}
+
+/// Überlappen sich zwei Rechtecke? Exakt anliegende Kanten zählen nicht.
+/// Einheiten sind egal, solange beide Rechtecke dieselben benutzen.
+pub fn aabb_overlap(
+    a_center: [f32; 2],
+    a_half: [f32; 2],
+    b_center: [f32; 2],
+    b_half: [f32; 2],
+) -> bool {
+    (0..2).all(|i| (a_center[i] - b_center[i]).abs() < a_half[i] + b_half[i])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn aabb_overlap_cases() {
+        let h = [0.5, 0.5];
+        assert!(aabb_overlap([0.0, 0.0], h, [0.9, 0.0], h), "überlappend");
+        assert!(
+            !aabb_overlap([0.0, 0.0], h, [1.0, 0.0], h),
+            "exakt anliegend"
+        );
+        assert!(
+            !aabb_overlap([0.0, 0.0], h, [0.5, 3.0], h),
+            "nur x überlappt"
+        );
+        assert!(
+            aabb_overlap([0.0, 0.0], [5.0, 5.0], [1.0, 1.0], [0.1, 0.1]),
+            "enthalten"
+        );
+    }
 
     const HALF: [f32; 2] = [0.4, 0.4];
 
@@ -190,5 +322,95 @@ mod tests {
         let corridor = |p: GridPos| p.x == 2 || p.x == 4;
         let r = move_and_slide([3.5, 1.5], HALF, [0.0, 5.0], corridor);
         assert!(!r.hit_any());
+    }
+
+    // --- Ecken-Korrektur ---------------------------------------------------
+
+    const NUDGE: Nudge = Nudge {
+        max_offset: 0.4,
+        max_step: 0.0625,
+    };
+    const PLAYER: [f32; 2] = [0.3, 0.3];
+
+    /// Wand in Reihe y = 8 mit einer Türlücke bei x = 7.
+    fn wall_with_door(p: GridPos) -> bool {
+        p.y >= 8 && !(p.y == 8 && p.x == 7)
+    }
+
+    /// Läuft 30 Ticks nach oben und liefert die Endposition.
+    fn walk_up(start: [f32; 2], nudged: bool) -> [f32; 2] {
+        let mut c = start;
+        for _ in 0..30 {
+            c = if nudged {
+                move_and_slide_nudged(c, PLAYER, [0.0, 0.1], NUDGE, wall_with_door).center
+            } else {
+                move_and_slide(c, PLAYER, [0.0, 0.1], wall_with_door).center
+            };
+        }
+        c
+    }
+
+    #[test]
+    fn without_nudge_the_player_gets_stuck() {
+        // Hitbox [6.85, 7.45] ragt 0,15 Kacheln über die linke Türkante.
+        let c = walk_up([7.15, 7.5], false);
+        assert!(c[1] < 8.0, "Testaufbau falsch: {c:?}");
+    }
+
+    #[test]
+    fn slides_into_door_gap_from_the_left() {
+        let c = walk_up([7.15, 7.5], true);
+        assert!(c[1] > 8.0, "sollte in der Tür stehen, ist bei {c:?}");
+        assert!((7.3..=7.7).contains(&c[0]), "x außerhalb der Lücke: {c:?}");
+    }
+
+    #[test]
+    fn slides_into_door_gap_from_the_right() {
+        let c = walk_up([7.85, 7.5], true);
+        assert!(c[1] > 8.0, "{c:?}");
+    }
+
+    #[test]
+    fn slides_in_from_max_offset() {
+        // 0,4 Kacheln neben der Stelle, an der die Hitbox gerade passt.
+        let c = walk_up([7.3 - 0.4, 7.5], true);
+        assert!(c[1] > 8.0, "{c:?}");
+    }
+
+    #[test]
+    fn no_nudge_along_a_solid_wall() {
+        let wall = |p: GridPos| p.y >= 8;
+        let r = move_and_slide_nudged([3.5, 7.7], PLAYER, [0.0, 0.1], NUDGE, wall);
+        assert!(r.hit_y);
+        assert!(
+            approx(r.center[0], 3.5),
+            "darf nicht seitlich wandern: {:?}",
+            r.center
+        );
+    }
+
+    #[test]
+    fn no_nudge_when_too_far_from_gap() {
+        // 1,0 Kacheln neben der Lücke – außerhalb von max_offset.
+        let r = move_and_slide_nudged([6.2, 7.7], PLAYER, [0.0, 0.1], NUDGE, wall_with_door);
+        assert!(approx(r.center[0], 6.2), "{:?}", r.center);
+    }
+
+    #[test]
+    fn never_nudges_against_player_input() {
+        // Lücke liegt rechts, Spieler läuft schräg nach links oben.
+        let r = move_and_slide_nudged([7.2, 7.7], PLAYER, [-0.05, 0.1], NUDGE, wall_with_door);
+        assert!(
+            r.center[0] < 7.2,
+            "wurde gegen die Eingabe geschoben: {:?}",
+            r.center
+        );
+    }
+
+    #[test]
+    fn nudge_step_is_limited() {
+        let before = [7.2, 7.7];
+        let r = move_and_slide_nudged(before, PLAYER, [0.0, 0.1], NUDGE, wall_with_door);
+        assert!((r.center[0] - before[0]).abs() <= NUDGE.max_step + 1e-5);
     }
 }

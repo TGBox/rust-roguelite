@@ -6,7 +6,7 @@
 
 use std::fmt;
 
-use crate::GridPos;
+use crate::{Direction, GridPos};
 
 /// Gesamtbreite inkl. Wandring.
 pub const ROOM_WIDTH: i32 = 15;
@@ -17,6 +17,29 @@ pub const ROOM_HEIGHT: i32 = 9;
 pub fn is_border(pos: GridPos) -> bool {
     pos.x == 0 || pos.y == 0 || pos.x == ROOM_WIDTH - 1 || pos.y == ROOM_HEIGHT - 1
 }
+
+/// Position der Tür in der Mitte der jeweiligen Wand.
+pub const fn door_pos(dir: Direction) -> GridPos {
+    match dir {
+        Direction::North => GridPos::new(ROOM_WIDTH / 2, ROOM_HEIGHT - 1),
+        Direction::South => GridPos::new(ROOM_WIDTH / 2, 0),
+        Direction::West => GridPos::new(0, ROOM_HEIGHT / 2),
+        Direction::East => GridPos::new(ROOM_WIDTH - 1, ROOM_HEIGHT / 2),
+    }
+}
+
+/// Die Bodenkachel direkt vor einer Tür (innen) – hier erscheint der Spieler.
+pub fn inside_door(dir: Direction) -> GridPos {
+    door_pos(dir) - dir.offset()
+}
+
+/// Ist `pos` eine Türposition? Wenn ja, in welcher Wand?
+pub fn door_direction(pos: GridPos) -> Option<Direction> {
+    Direction::ALL.into_iter().find(|&d| door_pos(d) == pos)
+}
+
+/// Mitte des Raums.
+pub const CENTER: GridPos = GridPos::new(ROOM_WIDTH / 2, ROOM_HEIGHT / 2);
 
 /// Alle Kachelpositionen des Raums, Zeile für Zeile von unten links.
 pub fn all_tiles() -> impl Iterator<Item = GridPos> {
@@ -32,15 +55,19 @@ pub enum Tile {
     Rock,
     /// Grube: blockiert Laufen, Schüsse fliegen darüber.
     Pit,
+    /// Durchgang zum Nachbarraum. Offen begehbar; ob sie gerade verschlossen
+    /// ist, entscheidet das Spiel (Zustand, nicht Layout).
+    Door,
 }
 
 impl Tile {
     pub fn blocks_movement(self) -> bool {
-        !matches!(self, Tile::Floor)
+        !matches!(self, Tile::Floor | Tile::Door)
     }
 
+    /// Schüsse zerplatzen auch am Türrahmen.
     pub fn blocks_projectiles(self) -> bool {
-        matches!(self, Tile::Wall | Tile::Rock)
+        matches!(self, Tile::Wall | Tile::Rock | Tile::Door)
     }
 
     fn from_char(c: char) -> Option<Tile> {
@@ -49,6 +76,7 @@ impl Tile {
             '#' => Some(Tile::Wall),
             'o' => Some(Tile::Rock),
             '_' => Some(Tile::Pit),
+            'D' => Some(Tile::Door),
             _ => None,
         }
     }
@@ -59,6 +87,7 @@ impl Tile {
             Tile::Wall => '#',
             Tile::Rock => 'o',
             Tile::Pit => '_',
+            Tile::Door => 'D',
         }
     }
 }
@@ -120,6 +149,14 @@ impl RoomLayout {
         self.get(pos).is_none_or(Tile::blocks_projectiles)
     }
 
+    /// Setzt Türen in die angegebenen Wände (Builder-Stil: nimmt `self` und gibt es zurück).
+    pub fn with_doors(mut self, dirs: impl IntoIterator<Item = Direction>) -> Self {
+        for dir in dirs {
+            self.set(door_pos(dir), Tile::Door);
+        }
+        self
+    }
+
     pub fn iter(&self) -> impl Iterator<Item = (GridPos, Tile)> {
         all_tiles().zip(self.tiles.iter().copied())
     }
@@ -128,7 +165,7 @@ impl RoomLayout {
     /// oberste Raumreihe (y = ROOM_HEIGHT - 1). Leerzeilen und Einrückung
     /// werden ignoriert, damit Layouts bequem als Raw-Strings im Code stehen können.
     ///
-    /// Zeichen: `#` Wand, `.` Boden, `o` Fels, `_` Grube.
+    /// Zeichen: `#` Wand, `.` Boden, `o` Fels, `_` Grube, `D` Tür (nur an Türpositionen).
     pub fn from_ascii(text: &str) -> Result<Self, LayoutError> {
         let rows: Vec<&str> = text
             .lines()
@@ -157,7 +194,11 @@ impl RoomLayout {
             for (col, ch) in line.chars().enumerate() {
                 let tile = Tile::from_char(ch).ok_or(LayoutError::UnknownChar { row, col, ch })?;
                 let pos = GridPos::new(col as i32, y);
-                if is_border(pos) && tile != Tile::Wall {
+                let at_door = door_direction(pos).is_some();
+                if tile == Tile::Door && !at_door {
+                    return Err(LayoutError::MisplacedDoor { pos });
+                }
+                if is_border(pos) && !matches!(tile, Tile::Wall | Tile::Door) {
                     return Err(LayoutError::OpenBorder { pos });
                 }
                 layout.set(pos, tile);
@@ -200,8 +241,12 @@ pub enum LayoutError {
         col: usize,
         ch: char,
     },
-    /// Der Rand muss (vorerst) komplett aus Wänden bestehen. Türen kommen in M4.
+    /// Der Rand darf nur aus Wänden und Türen bestehen.
     OpenBorder {
+        pos: GridPos,
+    },
+    /// Tür an einer Stelle, an der keine Tür sein darf.
+    MisplacedDoor {
         pos: GridPos,
     },
 }
@@ -225,6 +270,13 @@ impl fmt::Display for LayoutError {
             }
             LayoutError::OpenBorder { pos } => {
                 write!(f, "Rand bei ({}, {}) ist keine Wand", pos.x, pos.y)
+            }
+            LayoutError::MisplacedDoor { pos } => {
+                write!(
+                    f,
+                    "Tür bei ({}, {}) liegt nicht in einer Wandmitte",
+                    pos.x, pos.y
+                )
             }
         }
     }
@@ -303,6 +355,48 @@ mod tests {
         let layout = RoomLayout::empty();
         assert!(layout.blocks_movement(GridPos::new(-1, 3)));
         assert!(layout.blocks_projectiles(GridPos::new(ROOM_WIDTH, 0)));
+    }
+
+    #[test]
+    fn doors_are_centered_and_entries_are_inside() {
+        for dir in Direction::ALL {
+            let door = door_pos(dir);
+            assert!(is_border(door), "{dir:?}");
+            assert!(!is_border(inside_door(dir)), "{dir:?}");
+            assert_eq!(door.manhattan(inside_door(dir)), 1);
+            assert_eq!(door_direction(door), Some(dir));
+        }
+        assert_eq!(door_direction(CENTER), None);
+    }
+
+    #[test]
+    fn with_doors_sets_only_requested_doors() {
+        let layout = RoomLayout::empty().with_doors([Direction::North, Direction::West]);
+        let doors: Vec<GridPos> = layout
+            .iter()
+            .filter(|&(_, t)| t == Tile::Door)
+            .map(|(p, _)| p)
+            .collect();
+        assert_eq!(doors.len(), 2);
+        assert!(doors.contains(&door_pos(Direction::North)));
+        assert!(doors.contains(&door_pos(Direction::West)));
+        // Türen überleben den ASCII-Roundtrip.
+        assert_eq!(RoomLayout::from_ascii(&layout.to_ascii()), Ok(layout));
+    }
+
+    #[test]
+    fn rejects_misplaced_door() {
+        let bad = SAMPLE.replacen("#..oo.....__..#", "#..oD.....__..#", 1);
+        assert!(matches!(
+            RoomLayout::from_ascii(&bad),
+            Err(LayoutError::MisplacedDoor { .. })
+        ));
+    }
+
+    #[test]
+    fn doors_are_walkable_but_stop_shots() {
+        assert!(!Tile::Door.blocks_movement());
+        assert!(Tile::Door.blocks_projectiles());
     }
 
     #[test]

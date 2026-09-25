@@ -7,6 +7,7 @@ use crate::{
     TILE_SIZE,
     assets::GameAssets,
     physics::{Body, BodyKind, TileHit, physics_body},
+    room::RoomScoped,
     schedule::GameSet,
     states::AppState,
 };
@@ -39,6 +40,7 @@ pub fn tear_bundle(
     (
         Name::new("Tear"),
         DespawnOnExit(AppState::InGame),
+        RoomScoped,
         Projectile {
             remaining: lifetime,
         },

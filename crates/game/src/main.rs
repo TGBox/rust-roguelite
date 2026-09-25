@@ -6,6 +6,7 @@ use bevy::prelude::*;
 mod assets;
 mod camera;
 mod debug;
+mod enemy;
 mod physics;
 mod player;
 mod projectile;
@@ -13,6 +14,7 @@ mod room;
 mod run;
 mod schedule;
 mod states;
+mod transition;
 mod ui;
 
 /// Kantenlänge einer Kachel in Weltkoordinaten (Pixel bei Zoom 1).
@@ -48,6 +50,8 @@ fn main() {
             physics::PhysicsPlugin,
             player::PlayerPlugin,
             projectile::ProjectilePlugin,
+            enemy::EnemyPlugin,
+            transition::TransitionPlugin,
             ui::UiPlugin,
             debug::DebugPlugin,
         ))

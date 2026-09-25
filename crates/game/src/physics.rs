@@ -9,11 +9,7 @@
 use bevy::prelude::*;
 use dungeon_gen::{GridPos, collision};
 
-use crate::{
-    TILE_SIZE,
-    room::{CurrentRoom, tile_space_to_world, world_to_tile_space},
-    schedule::GameSet,
-};
+use crate::{TILE_SIZE, room::CurrentRoom, schedule::GameSet};
 
 pub struct PhysicsPlugin;
 
@@ -91,6 +87,11 @@ fn snapshot_positions(mut query: Query<(&Position, &mut PreviousPosition)>) {
     }
 }
 
+/// Wie weit neben einer Lücke die Ecken-Korrektur noch greift (Kacheln).
+const NUDGE_MAX_OFFSET_TILES: f32 = 0.4;
+/// Wie schnell in die Lücke geschoben wird (Kacheln/s).
+const NUDGE_SPEED_TILES: f32 = 4.0;
+
 fn move_bodies(
     time: Res<Time>,
     room: Res<CurrentRoom>,
@@ -101,19 +102,25 @@ fn move_bodies(
     let dt = time.delta_secs();
 
     for (entity, mut pos, mut vel, body) in &mut query {
-        let is_solid = |p: GridPos| match body.kind {
-            BodyKind::Walker => room.0.blocks_movement(p),
-            BodyKind::Projectile => room.0.blocks_projectiles(p),
+        let is_solid = |p: GridPos| room.blocks(p, body.kind);
+        let center = room.world_to_tile_space(pos.0).to_array();
+        let half = (body.half_size / TILE_SIZE).to_array();
+        let delta = (vel.0 * dt / TILE_SIZE).to_array();
+
+        let result = match body.kind {
+            // Läufer gleiten an Tür- und Felsecken vorbei in die Lücke.
+            BodyKind::Walker => {
+                let nudge = collision::Nudge {
+                    max_offset: NUDGE_MAX_OFFSET_TILES,
+                    max_step: NUDGE_SPEED_TILES * dt,
+                };
+                collision::move_and_slide_nudged(center, half, delta, nudge, is_solid)
+            }
+            // Projektile sollen an Kanten zerplatzen, nicht ausweichen.
+            BodyKind::Projectile => collision::move_and_slide(center, half, delta, is_solid),
         };
 
-        let result = collision::move_and_slide(
-            world_to_tile_space(pos.0).to_array(),
-            (body.half_size / TILE_SIZE).to_array(),
-            (vel.0 * dt / TILE_SIZE).to_array(),
-            is_solid,
-        );
-
-        pos.0 = tile_space_to_world(Vec2::from_array(result.center));
+        pos.0 = room.tile_space_to_world(Vec2::from_array(result.center));
         // Gegen die Wand gelaufen: Geschwindigkeit auf dieser Achse vernichten,
         // sonst „klebt“ man beim Loslassen noch einen Moment an der Wand.
         if result.hit_x {

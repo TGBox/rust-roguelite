@@ -17,7 +17,7 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use crate::{
-    Direction, GridPos,
+    Direction, GridPos, RoomLayout,
     rng::{Rng, RunSeed},
     templates::{self, RoomTemplate},
 };
@@ -81,6 +81,12 @@ impl Floor {
         pos.neighbors()
             .filter(|(_, n)| self.rooms.contains_key(n))
             .map(|(d, _)| d)
+    }
+
+    /// Fertiges Kachel-Layout eines Raums: Vorlage plus Türen zu allen Nachbarn.
+    pub fn room_layout(&self, pos: GridPos) -> Option<RoomLayout> {
+        let room = self.get(pos)?;
+        Some(room.template.layout().with_doors(self.doors(pos)))
     }
 
     /// Erster Raum dieser Art (Spezialräume gibt es je genau einmal).
@@ -345,6 +351,27 @@ mod tests {
                 .unwrap();
             assert_eq!(boss.distance, farthest_dead_end, "Seed {seed}");
         });
+    }
+
+    #[test]
+    fn doors_match_neighbors_on_both_sides() {
+        use crate::{Tile, room::door_pos};
+        for s in 0..500 {
+            let floor = generate(RunSeed(s), 2);
+            for (pos, _) in floor.rooms() {
+                let layout = floor.room_layout(pos).unwrap();
+                for dir in Direction::ALL {
+                    let has_neighbor = floor.get(pos.neighbor(dir)).is_some();
+                    let has_door = layout.get(door_pos(dir)) == Some(Tile::Door);
+                    assert_eq!(has_neighbor, has_door, "Raum {pos:?}, {dir:?}");
+                    if has_door {
+                        // Gegenüber muss die passende Tür sein.
+                        let other = floor.room_layout(pos.neighbor(dir)).unwrap();
+                        assert_eq!(other.get(door_pos(dir.opposite())), Some(Tile::Door));
+                    }
+                }
+            }
+        }
     }
 
     #[test]

@@ -1,6 +1,7 @@
 //! Debug-Werkzeuge:
 //! - F1: Hitboxen anzeigen
 //! - K:  Spieler sofort sterben lassen (bis es in M5 echten Schaden gibt)
+//! - F4: alle Gegner im Raum entfernen (Türen öffnen sich)
 //! - Beim Betreten des Hauptmenüs wird geprüft, ob Spielwelt-Entities übrig sind.
 //! - Bilder über 25 ms werden mit Kontext geloggt (Ruckler-Diagnose).
 //! - Alle 5 s eine Frame-Statistik; F3 schaltet VSync um.
@@ -12,6 +13,7 @@ use bevy::{
 };
 
 use crate::{
+    enemy::Enemy,
     physics::{Body, BodyKind},
     projectile::Projectile,
     states::{AppState, InGameState},
@@ -29,6 +31,9 @@ impl Plugin for DebugPlugin {
                 kill_player
                     .run_if(in_state(InGameState::Playing))
                     .run_if(input_just_pressed(KeyCode::KeyK)),
+                clear_room
+                    .run_if(in_state(InGameState::Playing))
+                    .run_if(input_just_pressed(KeyCode::F4)),
             ),
         )
         .add_systems(OnEnter(AppState::MainMenu), log_entity_count)
@@ -123,6 +128,12 @@ fn draw_hitboxes(mut gizmos: Gizmos, query: Query<(&Transform, &Body)>) {
             body.half_size * 2.0,
             color,
         );
+    }
+}
+
+fn clear_room(mut commands: Commands, enemies: Query<Entity, With<Enemy>>) {
+    for e in &enemies {
+        commands.entity(e).despawn();
     }
 }
 

@@ -183,10 +183,7 @@ mod tests {
     use std::collections::{BTreeSet, VecDeque};
 
     use super::*;
-    use crate::{
-        Direction, GridPos,
-        room::{ROOM_HEIGHT, ROOM_WIDTH},
-    };
+    use crate::{Direction, GridPos, room::inside_door};
 
     const ALL_KINDS: [RoomKind; 5] = [
         RoomKind::Start,
@@ -198,16 +195,6 @@ mod tests {
 
     fn all_templates() -> impl Iterator<Item = &'static RoomTemplate> {
         ALL_KINDS.into_iter().flat_map(|k| pool(k).iter())
-    }
-
-    /// Kachel direkt innerhalb einer Tür.
-    fn inside_door(dir: Direction) -> GridPos {
-        match dir {
-            Direction::North => GridPos::new(ROOM_WIDTH / 2, ROOM_HEIGHT - 2),
-            Direction::South => GridPos::new(ROOM_WIDTH / 2, 1),
-            Direction::West => GridPos::new(1, ROOM_HEIGHT / 2),
-            Direction::East => GridPos::new(ROOM_WIDTH - 2, ROOM_HEIGHT / 2),
-        }
     }
 
     #[test]
