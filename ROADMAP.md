@@ -14,7 +14,7 @@ Ziel: Rust an einem komplexen, realistischen Projekt lernen – mit sauberer Arc
 | Physik | **Eigene** Kollision (AABB gegen Tile-Grid, Kreis gegen Kreis) | Lerneffekt, volle Kontrolle, deterministisch; kein Physik-Crate |
 | Mathe | `f32` mit Bevy-`Vec2`, **keine** Fixpoint-Math | Determinismus über festen Zeitschritt + geseedetes RNG reicht für Replays/Debugging ohne Netcode |
 | Gameplay-Takt | Logik in `FixedUpdate` (64 Hz), Input-Erfassung in `Update` | Framerate-unabhängig, reproduzierbar |
-| RNG | `rand_chacha::ChaCha8Rng`, getrennte Streams pro Zweck | Kampf-Zufall verändert nicht den Dungeon desselben Seeds |
+| RNG | Eigener xoshiro256** in `dungeon_gen` (SplitMix64 zum Seeden), getrennte Streams pro Zweck | Stabil über alle Versionen, keine Dependency; Kampf-Zufall verändert nicht den Dungeon desselben Seeds |
 | Daten | Items, Gegner, Raumvorlagen als RON-Dateien in `assets/` | Datengetrieben, ohne Neukompilieren änderbar |
 | Grafik | Erst farbige Formen (`Mesh2d`), später Sprites (z. B. Kenney-Assets, CC0) | Logik zuerst, Optik zuletzt |
 
@@ -51,7 +51,7 @@ rust-roguelite/
 │           ├── run/               # Seed, Run-Status, Tod, Zusammenfassung
 │           ├── meta/              # Profil, Freischaltungen, Savegames
 │           └── ui/                # Menüs, HUD, Minimap
-└── assets/
+└── crates/game/assets/   # Bevy sucht relativ zur Crate, nicht zum Workspace
     ├── data/{items, enemies, rooms}/*.ron
     ├── sprites/  audio/  fonts/
 ```
@@ -75,11 +75,11 @@ RunSeed (u64, anzeigbar/eingebbar)
  ├── stream("items")      → Item-Pool-Ziehungen
  └── stream("combat")     → Crits, Drops, KI-Entscheidungen
 ```
-Jeder Stream = `ChaCha8Rng::seed_from_u64(hash(seed, name, n))`.
+Jeder Stream = `RunSeed::stream(name, n)` → `Rng::from_seed(mix(seed, fnv1a(name), n))`.
 
 ### Spielwelt-Modell (Isaac-artig)
 
-- **Etage** = Raster aus Räumen (max. 9×8), erzeugt per Expansion vom Startraum aus.
+- **Etage** = Raster aus Räumen (13×13, Start in der Mitte, max. 20 Räume), erzeugt per Expansion vom Startraum aus.
 - **Raum** = 15×9 Kacheln (13×7 begehbar + Wandring), Inhalt aus RON-Vorlagen.
 - **Spezialräume**: Boss (weitester Sackgassen-Raum), Schatz, Shop, Geheimraum (später).
 - Kamera zeigt immer genau einen Raum; Raumwechsel = Kamera-Schwenk.
@@ -90,31 +90,31 @@ Jeder Stream = `ChaCha8Rng::seed_from_u64(hash(seed, name, n))`.
 
 Jeder Meilenstein endet mit etwas **Spielbarem oder Testbarem**. „DoD“ = Definition of Done.
 
-### M0 – Fundament
+### M0 – Fundament ✅
 - Workspace, `bevy = "0.19"`, Dev-Profil (`opt-level = 1` für eigenen Code, `3` für Dependencies), optional `dynamic_linking`.
 - Bevy-Features auf 2D reduzieren (genaue Feature-Namen für 0.19 prüfen).
 - Fenster, 2D-Kamera, Log-Ausgabe, `cargo clippy` sauber.
 - **DoD:** Fenster öffnet sich mit farbigem Quadrat; `cargo test` läuft (leer).
 - *Lernfokus:* Workspace-Dependencies, Cargo-Profile, Plugin-Pattern.
 
-### M1 – Core-Loop-Prototyp (ein fester Raum)
+### M1 – Core-Loop-Prototyp ✅ (ein fester Raum)
 - `Velocity`, `Collider { half_extents }`, Tile-Grid-Kollision mit Wand-Sliding.
 - Spieler: 8-Wege-Bewegung mit Beschleunigung/Reibung, Schießen in 4 Richtungen, Feuerrate-Cooldown.
 - Projektile mit Reichweite/Lebenszeit, Zerstörung an Wänden.
 - **DoD:** Man läuft in einem Raum herum und schießt; nichts geht durch Wände.
 - *Lernfokus:* Components/Queries, `FixedUpdate`, SystemSets & Reihenfolge (`Input → Move → Collide`).
 
-### M2 – Zustände & Spielfluss
+### M2 – Zustände & Spielfluss ✅
 - `AppState` + `InGameState`, Hauptmenü, Pause (Esc), Game-Over-Screen.
 - `DespawnOnExit(State)` für automatisches Aufräumen.
 - **DoD:** Menü → Spiel → Pause → Tod → Menü, ohne übrig gebliebene Entities.
 - *Lernfokus:* States, SubStates, `OnEnter/OnExit`, Run-Conditions.
 
-### M3 – Prozedurale Etagen (`dungeon_gen`, Bevy-frei)
+### M3 – Prozedurale Etagen ✅ (`dungeon_gen`, Bevy-frei)
 - `RunSeed`, RNG-Streams.
 - Etagen-Generator: Raumanzahl abhängig von Etage, Expansion mit Nachbar-Regeln, Spezialräume zuweisen.
-- Raumvorlagen aus RON (Hindernisse, Gegner-Spawnpunkte).
-- Tests: gleicher Seed ⇒ gleiche Etage; alle Räume erreichbar; Boss-Raum ist Sackgasse; Property-Tests über 10 000 Seeds (`proptest`).
+- Raumvorlagen als ASCII im Code (RON-Dateien folgen in M6).
+- Tests: gleicher Seed ⇒ gleiche Etage; alle Räume erreichbar; Boss-Raum ist Sackgasse; Property-Tests über 10 000 Seeds (eigene Schleife statt `proptest`).
 - **DoD:** `cargo test -p dungeon_gen` grün; ASCII-Ausgabe einer Etage per Beispiel-Binary.
 - *Lernfokus:* reine Datenmodelle, `serde`, Trait-basierte Generator-Schritte, Property-Testing.
 

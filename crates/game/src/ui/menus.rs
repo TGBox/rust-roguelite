@@ -5,7 +5,10 @@
 use bevy::{input::common_conditions::input_just_pressed, prelude::*};
 
 use super::{MenuAction, button, hint, perform, screen_root, title};
-use crate::states::{AppState, InGameState};
+use crate::{
+    run::Run,
+    states::{AppState, InGameState},
+};
 
 pub struct MenusPlugin;
 
@@ -38,7 +41,13 @@ fn spawn_main_menu(mut commands: Commands) {
     ));
 }
 
-fn spawn_pause_menu(mut commands: Commands) {
+fn spawn_pause_menu(mut commands: Commands, run: Res<Run>) {
+    let info = format!(
+        "Seed {}   ·   Etage {} ({} Räume)   ·   Esc: weiter",
+        run.seed,
+        run.floor.depth,
+        run.floor.len()
+    );
     commands.spawn((
         Name::new("PauseMenu"),
         DespawnOnExit(InGameState::Paused),
@@ -50,7 +59,7 @@ fn spawn_pause_menu(mut commands: Commands) {
             title("Pause"),
             button("Weiter", MenuAction::Resume),
             button("Hauptmenü", MenuAction::ToMainMenu),
-            hint("Esc: weiter"),
+            hint(&info),
         ],
     ));
 }

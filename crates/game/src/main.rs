@@ -10,6 +10,7 @@ mod physics;
 mod player;
 mod projectile;
 mod room;
+mod run;
 mod schedule;
 mod states;
 mod ui;
@@ -42,6 +43,7 @@ fn main() {
             schedule::SchedulePlugin,
             assets::GameAssetsPlugin,
             camera::CameraPlugin,
+            run::RunPlugin,
             room::RoomPlugin,
             physics::PhysicsPlugin,
             player::PlayerPlugin,

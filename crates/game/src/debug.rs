@@ -3,10 +3,12 @@
 //! - K:  Spieler sofort sterben lassen (bis es in M5 echten Schaden gibt)
 //! - Beim Betreten des Hauptmenüs wird geprüft, ob Spielwelt-Entities übrig sind.
 //! - Bilder über 25 ms werden mit Kontext geloggt (Ruckler-Diagnose).
+//! - Alle 5 s eine Frame-Statistik; F3 schaltet VSync um.
 
 use bevy::{
     input::common_conditions::{input_just_pressed, input_toggle_active},
     prelude::*,
+    window::PresentMode,
 };
 
 use crate::{
@@ -35,10 +37,50 @@ impl Plugin for DebugPlugin {
         .add_systems(FixedFirst, count_fixed_tick)
         .add_systems(
             RunFixedMainLoop,
-            log_frame_hitches
+            (log_frame_hitches, log_frame_stats)
                 .in_set(RunFixedMainLoopSystems::AfterFixedMainLoop)
                 .run_if(in_state(InGameState::Playing)),
+        )
+        .add_systems(Update, toggle_vsync.run_if(input_just_pressed(KeyCode::F3)));
+    }
+}
+
+/// F3: VSync an/aus. Zeigt, ob die Ruckler vom verpassten Bildschirm-Takt kommen.
+fn toggle_vsync(mut window: Single<&mut Window>) {
+    window.present_mode = match window.present_mode {
+        PresentMode::AutoNoVsync => PresentMode::AutoVsync,
+        _ => PresentMode::AutoNoVsync,
+    };
+    info!("Present-Modus: {:?}", window.present_mode);
+}
+
+/// Statistik über 5-Sekunden-Fenster: Durchschnitt, Maximum, Anzahl Ruckler.
+#[derive(Default)]
+struct FrameStats {
+    elapsed: f32,
+    frames: u32,
+    max_ms: f32,
+    hitches: u32,
+}
+
+fn log_frame_stats(time: Res<Time<Real>>, mut stats: Local<FrameStats>) {
+    let dt = time.delta_secs();
+    let ms = dt * 1000.0;
+    stats.elapsed += dt;
+    stats.frames += 1;
+    stats.max_ms = stats.max_ms.max(ms);
+    if ms > HITCH_THRESHOLD_MS {
+        stats.hitches += 1;
+    }
+    if stats.elapsed >= 5.0 {
+        info!(
+            "Frames: Ø {:.2} ms ({:.0} FPS) | max {:.1} ms | Ruckler: {}",
+            stats.elapsed * 1000.0 / stats.frames as f32,
+            stats.frames as f32 / stats.elapsed,
+            stats.max_ms,
+            stats.hitches
         );
+        *stats = FrameStats::default();
     }
 }
 
