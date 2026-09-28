@@ -16,6 +16,7 @@ use dungeon_gen::{
 use crate::{
     TILE_SIZE,
     assets::GameAssets,
+    audio::{Effect, Sfx},
     combat::{EnemyKilled, Health},
     item_db::ItemDatabase,
     physics::{Body, Position},
@@ -191,6 +192,7 @@ fn collect_loot(
     // Kachel, für die zuletzt „zu teuer“ angezeigt wurde – damit der Hinweis
     // nicht jeden Tick neu erscheint, solange man davorsteht.
     mut denied: Local<Option<dungeon_gen::GridPos>>,
+    mut sfx: MessageWriter<Sfx>,
 ) {
     let (player_pos, player_body, mut health) = player.into_inner();
     // Einmal umleihen: Ab hier ist `run` ein normales `&mut Run`, und wir dürfen
@@ -213,6 +215,8 @@ fn collect_loot(
             continue;
         };
 
+        // Klang vorher bestimmen: Nach dem Aufheben ist der Eintrag weg.
+        let sound = pickup_sound(&entries[index].1);
         let taken = match &entries[index].1 {
             Loot::Pickup(kind) => pick_up(*kind, &mut run.inventory, &mut health),
             Loot::Item(id) => match db.0.get(id) {
@@ -228,6 +232,7 @@ fn collect_loot(
                     touching_denied = Some(marker.tile);
                     if *denied != Some(marker.tile) {
                         toast.show(format!("Zu teuer – kostet {price} Münzen"));
+                        sfx.write(Sfx(Effect::Deny));
                     }
                     false
                 } else {
@@ -249,11 +254,26 @@ fn collect_loot(
             }
         };
         if taken {
+            sfx.write(Sfx(sound));
             entries.remove(index);
             commands.entity(entity).despawn();
         }
     }
     *denied = touching_denied;
+}
+
+fn pickup_sound(loot: &Loot) -> Effect {
+    match loot {
+        Loot::Pickup(PickupKind::Coin) => Effect::Coin,
+        Loot::Pickup(_) => Effect::Pickup,
+        Loot::Item(_) => Effect::Item,
+        Loot::ForSale {
+            ware: Ware::Item(_),
+            ..
+        } => Effect::Item,
+        // Kaufen eines Pickups klingt nach Geld.
+        Loot::ForSale { .. } => Effect::Coin,
+    }
 }
 
 /// Gibt `false` zurück, wenn das Pickup liegen bleibt (z. B. Herz bei vollem Leben).

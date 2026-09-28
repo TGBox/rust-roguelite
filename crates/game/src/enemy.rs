@@ -16,6 +16,7 @@ use dungeon_gen::{EnemyKind, GridPos, meta, pathing::FlowField, spawns};
 use crate::{
     TILE_SIZE,
     assets::GameAssets,
+    audio::{Effect, Sfx},
     combat::{ContactDamage, Faction, FlashArt, Health},
     juice::{FxColor, Wobble},
     physics::{Body, BodyKind, Position, Velocity, physics_body},
@@ -350,6 +351,7 @@ fn shooter_ai(
     assets: Res<GameAssets>,
     player: Single<&Position, With<Player>>,
     mut query: Query<(&Position, &mut Velocity, &Mobility, &mut Shooter), Without<Asleep>>,
+    mut sfx: MessageWriter<Sfx>,
 ) {
     const TOO_CLOSE: f32 = 3.5;
     const TOO_FAR: f32 = 6.0;
@@ -373,6 +375,7 @@ fn shooter_ai(
         shooter.cooldown -= dt;
         if shooter.cooldown <= 0.0 && room.line_of_sight(pos.0, player.0, BodyKind::Projectile) {
             shooter.cooldown = FIRE_DELAY;
+            sfx.write(Sfx(Effect::EnemyShoot));
             commands.spawn(enemy_shot(
                 pos.0,
                 to_player.normalize_or_zero(),
@@ -474,6 +477,7 @@ fn boss_ai(
     assets: Res<GameAssets>,
     player: Single<&Position, With<Player>>,
     mut query: Query<(&Position, &mut Velocity, &Mobility, &mut Boss), Without<Asleep>>,
+    mut sfx: MessageWriter<Sfx>,
 ) {
     const VOLLEY_DELAY: f32 = 2.8;
     const VOLLEY_SHOTS: u32 = 8;
@@ -487,6 +491,7 @@ fn boss_ai(
         boss.volley_cooldown -= dt;
         if boss.volley_cooldown <= 0.0 {
             boss.volley_cooldown = VOLLEY_DELAY;
+            sfx.write(Sfx(Effect::EnemyShoot));
             // Ring leicht zum Spieler hin gedreht, damit ein Schuss direkt zielt.
             let base = (player.0 - pos.0).to_angle();
             for i in 0..VOLLEY_SHOTS {

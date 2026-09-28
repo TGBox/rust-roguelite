@@ -11,7 +11,8 @@ edition = "2024"
 # Versionen zentral pflegen; Member-Crates schreiben nur `bevy.workspace = true`.
 [workspace.dependencies]
 # Nur die Feature-Sammlungen, die wir brauchen (kein 3D => deutlich kürzere Builds).
-bevy = { version = "0.19", default-features = false, features = ["2d", "ui", "audio"] }
+# "wav": Die Sounds werden im Code als WAV-Bytes erzeugt (siehe `audio/synth.rs`).
+bevy = { version = "0.19", default-features = false, features = ["2d", "ui", "audio", "wav"] }
 dungeon_gen = { path = "crates/dungeon_gen" }
 # Serialisierung: Items als RON-Datei, Spielstand speichern. Bevy nutzt dieselben
 # Versionen intern schon, es kommt also kaum Compile-Zeit dazu.

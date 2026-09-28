@@ -15,6 +15,7 @@ use dungeon_gen::collision::aabb_overlap;
 
 use crate::{
     assets::ActorArt,
+    audio::{Effect, Sfx},
     enemy::{Asleep, Boss, Enemy},
     juice::{Fx, FxColor},
     physics::{Body, Position, Velocity},
@@ -187,6 +188,7 @@ fn apply_damage(
     mut commands: Commands,
     mut messages: MessageReader<Damage>,
     mut fx: MessageWriter<Fx>,
+    mut sfx: MessageWriter<Sfx>,
     mut targets: Query<(
         &mut Health,
         &mut Velocity,
@@ -222,6 +224,7 @@ fn apply_damage(
         // deutlich spürbar sein.
         let color = color.map_or(Color::WHITE, |c| c.0);
         if is_player {
+            sfx.write(Sfx(Effect::PlayerHurt));
             fx.write(Fx::Shake(0.45));
             fx.write(Fx::Hitstop(0.08));
             fx.write(Fx::Burst {
@@ -231,6 +234,7 @@ fn apply_damage(
                 speed: 120.0,
             });
         } else {
+            sfx.write(Sfx(Effect::Hit));
             fx.write(Fx::Burst {
                 at: pos.0,
                 color,
@@ -258,6 +262,7 @@ fn handle_deaths(
     mut next: ResMut<NextState<InGameState>>,
     mut killed: MessageWriter<EnemyKilled>,
     mut fx: MessageWriter<Fx>,
+    mut sfx: MessageWriter<Sfx>,
 ) {
     for (entity, health, pos, color, is_player, is_boss) in &query {
         if health.current > 0.0 {
@@ -285,6 +290,11 @@ fn handle_deaths(
         });
         fx.write(Fx::Shake(shake));
         fx.write(Fx::Hitstop(stop));
+        sfx.write(Sfx(if is_boss {
+            Effect::BossDeath
+        } else {
+            Effect::EnemyDeath
+        }));
     }
 }
 

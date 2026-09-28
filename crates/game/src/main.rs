@@ -4,6 +4,7 @@
 use bevy::prelude::*;
 
 mod assets;
+mod audio;
 mod bomb;
 mod camera;
 mod combat;
@@ -71,6 +72,7 @@ fn main() {
             profile::ProfilePlugin,
             item_db::ItemDbPlugin,
             juice::JuicePlugin,
+            audio::GameAudioPlugin,
             save::SavePlugin,
             ui::UiPlugin,
             debug::DebugPlugin,

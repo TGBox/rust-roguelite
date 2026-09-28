@@ -8,6 +8,7 @@ use bevy::prelude::*;
 
 use crate::{
     assets::GameAssets,
+    audio::{Effect, Sfx},
     run::{ChosenSeed, LastRun, PendingResume},
     save,
     states::{AppState, InGameState},
@@ -151,11 +152,13 @@ fn button_actions(
     mut exit: MessageWriter<AppExit>,
     mut chosen: ResMut<ChosenSeed>,
     last: Option<Res<LastRun>>,
+    mut sfx: MessageWriter<Sfx>,
 ) {
     for (interaction, action) in &query {
         if *interaction != Interaction::Pressed {
             continue;
         }
+        sfx.write(Sfx(Effect::Click));
         if *action == MenuAction::RetrySeed {
             chosen.0 = last.as_ref().map(|l| l.seed);
         }

@@ -162,7 +162,9 @@ Jeder Meilenstein endet mit etwas **Spielbarem oder Testbarem**. „DoD“ = Def
   prozedurale Kacheln mit Rauschen, weiße Treffer-Silhouetten), `juice.rs` mit
   `Fx`-Messages: Trauma-Screenshake, Hitstop über `Time<Virtual>`-Tempo, Partikel,
   Lauf-Wackeln, Blickrichtung, Charger-Ausholen (rot pulsierend, geduckt).
-- **M8b (offen):** prozedural synthetisierte Sounds + Musik; Minimap-Feinschliff.
+- **M8b (umgesetzt, Test ausstehend):** `audio/synth.rs` erzeugt 15 Effekte und je Etage eine
+  Musikschleife als WAV im Speicher; `Sfx`-Messages, Wiederholsperre, Tonhöhen-Variation,
+  Musik pausiert im Pausemenü, **M** schaltet stumm.
 
 ### M9 – Polish & Release
 - Einstellungen (Lautstärke, Tastenbelegung) über Bevys `SettingsPlugin`.

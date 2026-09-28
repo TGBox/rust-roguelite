@@ -16,6 +16,7 @@ use dungeon_gen::{
 use crate::{
     TILE_SIZE,
     assets::GameAssets,
+    audio::{Effect, Sfx},
     enemy::{Enemy, spawn_room_enemies},
     inventory::{self, Toast},
     item_db::ItemDatabase,
@@ -303,6 +304,7 @@ fn open_key_doors(
     mut toast: ResMut<Toast>,
     player: Single<&Position, With<Player>>,
     mut hinted: Local<bool>,
+    mut sfx: MessageWriter<Sfx>,
 ) {
     if room.key_locked.is_empty() {
         return;
@@ -319,6 +321,7 @@ fn open_key_doors(
     if run.inventory.keys == 0 {
         if !*hinted {
             toast.show("Verschlossen – du brauchst einen Schlüssel".to_string());
+            sfx.write(Sfx(Effect::Deny));
             *hinted = true;
         }
         return;
@@ -328,6 +331,7 @@ fn open_key_doors(
     run.unlocked.insert(neighbor);
     room.key_locked.retain(|&d| d != dir);
     toast.show("Tür aufgeschlossen".to_string());
+    sfx.write(Sfx(Effect::Unlock));
 }
 
 #[cfg(test)]

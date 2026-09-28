@@ -13,6 +13,7 @@ use bevy::prelude::*;
 use crate::{
     TILE_SIZE,
     assets::GameAssets,
+    audio::{Effect, Sfx},
     combat::{Damage, Health},
     juice::Fx,
     physics::Position,
@@ -98,6 +99,7 @@ fn tick_bombs(
     mut tiles: Query<(&RoomTile, &mut Sprite), Without<Bomb>>,
     mut damage: MessageWriter<Damage>,
     mut fx: MessageWriter<Fx>,
+    mut sfx: MessageWriter<Sfx>,
 ) {
     let dt = time.delta_secs();
     for (entity, transform, mut bomb, mut sprite) in &mut bombs {
@@ -158,6 +160,7 @@ fn tick_bombs(
             speed: 240.0,
         });
         fx.write(Fx::Shake(0.7));
+        sfx.write(Sfx(Effect::Explosion));
         fx.write(Fx::Hitstop(0.05));
 
         // 3. Blitz anzeigen, Bombe entfernen.

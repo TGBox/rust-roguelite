@@ -13,6 +13,7 @@ use dungeon_gen::{
 use crate::{
     TILE_SIZE,
     assets::GameAssets,
+    audio::{Effect, Sfx},
     combat::{Faction, FlashArt, Health, Invulnerable},
     item_db::ItemDatabase,
     juice::Wobble,
@@ -243,6 +244,7 @@ fn player_shoot(
     input: Res<PlayerInput>,
     assets: Res<GameAssets>,
     mut query: Query<(&Position, &Velocity, &PlayerStats, &mut ShootCooldown), With<Player>>,
+    mut sfx: MessageWriter<Sfx>,
 ) {
     let dt = time.delta_secs();
     for (pos, vel, stats, mut cooldown) in &mut query {
@@ -257,6 +259,8 @@ fn player_shoot(
         }
         let PlayerStats { stats, pattern } = stats;
         cooldown.0 = stats.fire_delay();
+        // Ein Sound pro Salve, nicht pro Schuss.
+        sfx.write(Sfx(Effect::Shoot));
 
         let speed = stats.shot_speed * TILE_SIZE;
         let lifetime = stats.range * TILE_SIZE / speed;
