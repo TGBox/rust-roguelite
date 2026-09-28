@@ -292,7 +292,10 @@ mod tests {
     #[test]
     fn unlock_ids_exist() {
         for (id, _) in UNLOCKS {
-            assert!(items::by_id(id).is_some(), "unbekanntes Item '{id}'");
+            assert!(
+                items::ItemDb::builtin().get_str(id).is_some(),
+                "unbekanntes Item '{id}'"
+            );
         }
     }
 

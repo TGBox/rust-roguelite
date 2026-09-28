@@ -1,0 +1,321 @@
+// Item-Definitionen. Mit `cargo run --features dev` werden Änderungen
+// beim Speichern sofort ins laufende Spiel übernommen.
+(
+    items: [
+        (
+            id: "onion",
+            name: "Zwiebel",
+            description: "Feuerrate +30 %",
+            pools: [
+                Treasure,
+                Shop,
+            ],
+            price: 15,
+            effects: [
+                Stat((
+                    stat: FireRate,
+                    op: Mul(1.3),
+                )),
+            ],
+        ),
+        (
+            id: "whetstone",
+            name: "Wetzstein",
+            description: "Schaden +1",
+            pools: [
+                Treasure,
+                Shop,
+            ],
+            price: 15,
+            effects: [
+                Stat((
+                    stat: Damage,
+                    op: Add(1.0),
+                )),
+            ],
+        ),
+        (
+            id: "steak",
+            name: "Steak",
+            description: "+1 Herz, Schaden +0,5",
+            pools: [
+                Treasure,
+                Boss,
+            ],
+            price: 15,
+            effects: [
+                MaxHealth(2),
+                Stat((
+                    stat: Damage,
+                    op: Add(0.5),
+                )),
+            ],
+        ),
+        (
+            id: "sneakers",
+            name: "Laufschuhe",
+            description: "Tempo +1",
+            pools: [
+                Treasure,
+                Shop,
+            ],
+            price: 10,
+            effects: [
+                Stat((
+                    stat: MoveSpeed,
+                    op: Add(1.0),
+                )),
+            ],
+        ),
+        (
+            id: "spyglass",
+            name: "Fernrohr",
+            description: "Reichweite +2,5, Schussgeschwindigkeit +1,5",
+            pools: [
+                Treasure,
+                Shop,
+            ],
+            price: 10,
+            effects: [
+                Stat((
+                    stat: Range,
+                    op: Add(2.5),
+                )),
+                Stat((
+                    stat: ShotSpeed,
+                    op: Add(1.5),
+                )),
+            ],
+        ),
+        (
+            id: "trident",
+            name: "Dreizack",
+            description: "Drei Schüsse pro Salve, Feuerrate -30 %",
+            pools: [
+                Treasure,
+            ],
+            price: 20,
+            effects: [
+                ExtraShots(2),
+                Stat((
+                    stat: FireRate,
+                    op: Mul(0.7),
+                )),
+            ],
+        ),
+        (
+            id: "drill",
+            name: "Bohrer",
+            description: "Schüsse durchschlagen Gegner, Schaden -10 %",
+            pools: [
+                Treasure,
+            ],
+            price: 20,
+            effects: [
+                Piercing,
+                Stat((
+                    stat: Damage,
+                    op: Mul(0.9),
+                )),
+            ],
+        ),
+        (
+            id: "magnet_eye",
+            name: "Magnetauge",
+            description: "Schüsse suchen ihr Ziel, Schussgeschwindigkeit -1",
+            pools: [
+                Treasure,
+            ],
+            price: 20,
+            effects: [
+                Homing,
+                Stat((
+                    stat: ShotSpeed,
+                    op: Add(-1.0),
+                )),
+            ],
+        ),
+        (
+            id: "gold_rush",
+            name: "Goldrausch",
+            description: "Feuerrate +3 % pro Münze",
+            pools: [
+                Treasure,
+                Shop,
+            ],
+            price: 10,
+            effects: [
+                PerCoins(
+                    per: 1,
+                    modifier: (
+                        stat: FireRate,
+                        op: Mul(1.03),
+                    ),
+                ),
+            ],
+        ),
+        (
+            id: "piggy_bank",
+            name: "Sparschwein",
+            description: "+1 Münze pro geräumtem Raum",
+            pools: [
+                Treasure,
+                Shop,
+            ],
+            price: 5,
+            effects: [
+                OnRoomClear(Coins(1)),
+            ],
+        ),
+        (
+            id: "payday",
+            name: "Zahltag",
+            description: "25 % Chance auf eine Münze pro Kill",
+            pools: [
+                Treasure,
+                Shop,
+            ],
+            price: 10,
+            effects: [
+                OnKill(
+                    chance: 0.25,
+                    reward: Coins(1),
+                ),
+            ],
+        ),
+        (
+            id: "berserker",
+            name: "Berserker",
+            description: "Schaden +0,4 pro fehlendem halben Herz",
+            pools: [
+                Treasure,
+                Boss,
+            ],
+            price: 20,
+            effects: [
+                PerMissingHealth((
+                    stat: Damage,
+                    op: Add(0.4),
+                )),
+            ],
+        ),
+        (
+            id: "vampire_fang",
+            name: "Vampirzahn",
+            description: "15 % Chance auf ein halbes Herz pro Kill",
+            pools: [
+                Treasure,
+                Boss,
+            ],
+            price: 15,
+            effects: [
+                OnKill(
+                    chance: 0.15,
+                    reward: Heal(1),
+                ),
+            ],
+        ),
+        (
+            id: "tree_of_life",
+            name: "Lebensbaum",
+            description: "Heilt ein halbes Herz pro geräumtem Raum",
+            pools: [
+                Boss,
+            ],
+            price: 20,
+            effects: [
+                OnRoomClear(Heal(1)),
+            ],
+        ),
+        (
+            id: "lead_bullet",
+            name: "Bleikugel",
+            description: "Schaden +50 %, Feuerrate -15 %, Schussgeschwindigkeit -2",
+            pools: [
+                Treasure,
+                Boss,
+            ],
+            price: 15,
+            effects: [
+                Stat((
+                    stat: Damage,
+                    op: Mul(1.5),
+                )),
+                Stat((
+                    stat: FireRate,
+                    op: Mul(0.85),
+                )),
+                Stat((
+                    stat: ShotSpeed,
+                    op: Add(-2.0),
+                )),
+            ],
+        ),
+        (
+            id: "coffee",
+            name: "Kaffee",
+            description: "Tempo +0,7, Feuerrate +15 %, Schaden -10 %",
+            pools: [
+                Treasure,
+                Shop,
+            ],
+            price: 10,
+            effects: [
+                Stat((
+                    stat: MoveSpeed,
+                    op: Add(0.7),
+                )),
+                Stat((
+                    stat: FireRate,
+                    op: Mul(1.15),
+                )),
+                Stat((
+                    stat: Damage,
+                    op: Mul(0.9),
+                )),
+            ],
+        ),
+        (
+            id: "golden_heart",
+            name: "Goldenes Herz",
+            description: "+1 Herz",
+            pools: [
+                Shop,
+            ],
+            price: 15,
+            effects: [
+                MaxHealth(2),
+            ],
+        ),
+        (
+            id: "shotgun",
+            name: "Schrotflinte",
+            description: "Fünf Schüsse, Reichweite -50 %, Schaden -40 %",
+            pools: [
+                Boss,
+            ],
+            price: 25,
+            effects: [
+                ExtraShots(4),
+                Stat((
+                    stat: Range,
+                    op: Mul(0.5),
+                )),
+                Stat((
+                    stat: Damage,
+                    op: Mul(0.6),
+                )),
+            ],
+        ),
+        (
+            id: "breakfast",
+            name: "Frühstück",
+            description: "+1 Herz",
+            pools: [],
+            price: 5,
+            effects: [
+                MaxHealth(2),
+            ],
+        ),
+    ],
+)

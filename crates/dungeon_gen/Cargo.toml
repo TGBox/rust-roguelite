@@ -6,7 +6,12 @@ edition.workspace = true
 
 # Bewusst KEINE Bevy-Dependency: diese Crate soll ohne Engine
 # kompilieren und in Millisekunden getestet werden können.
+# `serde` ist optional: Nur die Spiel-Crate schaltet das Feature ein.
 [dependencies]
+serde = { workspace = true, optional = true }
+
+[features]
+serde = ["dep:serde"]
 
 [lints]
 workspace = true

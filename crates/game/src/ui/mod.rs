@@ -8,7 +8,8 @@ use bevy::prelude::*;
 
 use crate::{
     assets::GameAssets,
-    run::{ChosenSeed, LastRun},
+    run::{ChosenSeed, LastRun, PendingResume},
+    save,
     states::{AppState, InGameState},
 };
 
@@ -29,6 +30,8 @@ impl Plugin for UiPlugin {
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MenuAction {
     StartRun,
+    /// Gespeicherten Run fortsetzen.
+    Continue,
     /// Neuer Run mit dem Seed des letzten Runs.
     RetrySeed,
     EnterSeed,
@@ -141,6 +144,7 @@ fn button_visuals(
 }
 
 fn button_actions(
+    mut commands: Commands,
     query: Query<(&Interaction, &MenuAction), Changed<Interaction>>,
     mut app_state: ResMut<NextState<AppState>>,
     mut in_game: ResMut<NextState<InGameState>>,
@@ -155,6 +159,13 @@ fn button_actions(
         if *action == MenuAction::RetrySeed {
             chosen.0 = last.as_ref().map(|l| l.seed);
         }
+        if *action == MenuAction::Continue {
+            // Klappt das Laden nicht, startet einfach ein neuer Run.
+            match save::load() {
+                Some(run_save) => commands.insert_resource(PendingResume(run_save)),
+                None => warn!("Spielstand nicht ladbar – starte neuen Run"),
+            }
+        }
         perform(*action, &mut app_state, &mut in_game, &mut exit);
     }
 }
@@ -167,7 +178,9 @@ fn perform(
     exit: &mut MessageWriter<AppExit>,
 ) {
     match action {
-        MenuAction::StartRun | MenuAction::RetrySeed => app_state.set(AppState::InGame),
+        MenuAction::StartRun | MenuAction::RetrySeed | MenuAction::Continue => {
+            app_state.set(AppState::InGame)
+        }
         MenuAction::EnterSeed => app_state.set(AppState::SeedEntry),
         MenuAction::Resume => in_game.set(InGameState::Playing),
         MenuAction::ToMainMenu => app_state.set(AppState::MainMenu),

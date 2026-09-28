@@ -38,6 +38,7 @@ impl SplitMix64 {
 ///
 /// Bewusst **nicht** `Copy`: Ein versehentlich kopierter Generator würde
 /// dieselben Zahlen noch einmal liefern – ein typischer, schwer zu findender Bug.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Rng {
     s: [u64; 4],
@@ -160,6 +161,7 @@ impl Rng {
 ///
 /// Weil jeder Zweck seinen eigenen Generator hat, ändert zusätzlicher Zufall
 /// im Kampf nichts an der Etage, die derselbe Seed erzeugt.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct RunSeed(pub u64);
 

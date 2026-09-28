@@ -8,6 +8,7 @@ use std::ops::{Add, Sub};
 
 /// Position in einem Raster. `Copy`, weil nur 8 Byte groß: wird überall
 /// per Wert herumgereicht, ohne Borrowing-Aufwand.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
 pub struct GridPos {
     pub x: i32,
@@ -57,6 +58,7 @@ impl Sub for GridPos {
 }
 
 /// Die vier Himmelsrichtungen – später auch für Türen eines Raums.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Direction {
     North,

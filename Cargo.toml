@@ -13,6 +13,11 @@ edition = "2024"
 # Nur die Feature-Sammlungen, die wir brauchen (kein 3D => deutlich kürzere Builds).
 bevy = { version = "0.19", default-features = false, features = ["2d", "ui", "audio"] }
 dungeon_gen = { path = "crates/dungeon_gen" }
+# Serialisierung: Items als RON-Datei, Spielstand speichern. Bevy nutzt dieselben
+# Versionen intern schon, es kommt also kaum Compile-Zeit dazu.
+serde = { version = "1", features = ["derive"] }
+ron = "0.12"
+thiserror = "2"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

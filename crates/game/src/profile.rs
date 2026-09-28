@@ -21,12 +21,17 @@ impl Plugin for ProfilePlugin {
 #[derive(Resource, Debug, Default)]
 pub struct MetaProfile(pub Profile);
 
-pub fn path() -> PathBuf {
-    let base = std::env::var_os("APPDATA")
+/// Ordner für Profil und Spielstand.
+pub fn data_dir() -> PathBuf {
+    std::env::var_os("APPDATA")
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/share")))
-        .unwrap_or_else(|| PathBuf::from("."));
-    base.join("rust-roguelite").join("profile.txt")
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("rust-roguelite")
+}
+
+pub fn path() -> PathBuf {
+    data_dir().join("profile.txt")
 }
 
 /// Lädt das Profil. Fehlt die Datei, beginnt man mit einem leeren Profil.

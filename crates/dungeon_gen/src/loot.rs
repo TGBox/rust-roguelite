@@ -3,10 +3,11 @@
 use crate::{
     GridPos, RoomKind,
     floor::FLOOR_SIZE,
-    items::{ItemDef, ItemPools, Pool},
+    items::{ItemDb, ItemId, ItemPools, Pool},
     rng::{Rng, RunSeed},
 };
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum PickupKind {
     HalfHeart,
@@ -17,11 +18,12 @@ pub enum PickupKind {
 }
 
 /// Was auf einer Kachel liegen kann.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub enum Loot {
     Pickup(PickupKind),
     /// Item auf einem Sockel – kostenlos.
-    Item(&'static ItemDef),
+    Item(ItemId),
     /// Ware im Shop.
     ForSale {
         ware: Ware,
@@ -29,10 +31,11 @@ pub enum Loot {
     },
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub enum Ware {
     Pickup(PickupKind),
-    Item(&'static ItemDef),
+    Item(ItemId),
 }
 
 /// Startausrüstung eines Runs.
@@ -70,23 +73,24 @@ pub fn requires_key(kind: RoomKind, depth: u32) -> bool {
 }
 
 /// Die Waren im Shop: zwei Items, ein Herz, ein Schlüssel oder eine Bombe.
-pub fn shop_stock(pools: &mut ItemPools, rng: &mut Rng) -> Vec<Ware> {
+pub fn shop_stock(db: &ItemDb, pools: &mut ItemPools, rng: &mut Rng) -> Vec<Ware> {
     let utility = if rng.chance(0.5) {
         PickupKind::Key
     } else {
         PickupKind::Bomb
     };
     vec![
-        Ware::Item(pools.draw(Pool::Shop, rng)),
+        Ware::Item(pools.draw(db, Pool::Shop, rng)),
         Ware::Pickup(PickupKind::Heart),
         Ware::Pickup(utility),
-        Ware::Item(pools.draw(Pool::Shop, rng)),
+        Ware::Item(pools.draw(db, Pool::Shop, rng)),
     ]
 }
 
-pub fn price(ware: &Ware) -> u32 {
+pub fn price(db: &ItemDb, ware: &Ware) -> u32 {
     match ware {
-        Ware::Item(item) => item.price,
+        // Unbekanntes Item (aus der Datei gelöscht): Standardpreis.
+        Ware::Item(id) => db.get(id).map_or(10, |i| i.price),
         Ware::Pickup(PickupKind::Heart) => 3,
         Ware::Pickup(PickupKind::HalfHeart) => 2,
         Ware::Pickup(PickupKind::Key | PickupKind::Bomb) => 5,
@@ -124,14 +128,15 @@ mod tests {
     #[test]
     fn shop_has_two_different_items_and_sane_prices() {
         for s in 0..200 {
-            let mut pools = ItemPools::default();
-            let stock = shop_stock(&mut pools, &mut Rng::from_seed(s));
+            let db = ItemDb::builtin();
+            let mut pools = ItemPools::new(&db, &[]);
+            let stock = shop_stock(&db, &mut pools, &mut Rng::from_seed(s));
             assert_eq!(stock.len(), 4);
             let items: Vec<_> = stock
                 .iter()
                 .filter_map(|w| {
                     if let Ware::Item(i) = w {
-                        Some(i.id)
+                        Some(i.clone())
                     } else {
                         None
                     }
@@ -139,7 +144,7 @@ mod tests {
                 .collect();
             assert_eq!(items.len(), 2);
             assert_ne!(items[0], items[1]);
-            assert!(stock.iter().all(|w| (1..=30).contains(&price(w))));
+            assert!(stock.iter().all(|w| (1..=30).contains(&price(&db, w))));
         }
     }
 }

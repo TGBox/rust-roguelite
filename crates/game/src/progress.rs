@@ -16,6 +16,7 @@ use crate::{
     player::Player,
     room::{CurrentRoom, RoomCleared, RoomScoped, RoomTile, spawn_room_tiles},
     run::{Run, RunEnd},
+    save::Autosave,
     schedule::GameSet,
     states::AppState,
 };
@@ -54,7 +55,7 @@ fn count_kills(mut killed: MessageReader<EnemyKilled>, mut run: ResMut<Run>) {
     }
 }
 
-fn place_trapdoor(
+pub fn place_trapdoor(
     mut commands: Commands,
     mut cleared: MessageReader<RoomCleared>,
     mut run: ResMut<Run>,
@@ -138,6 +139,7 @@ fn descend_floor(
     mut camera: Single<&mut Transform, With<MainCamera>>,
     mut toast: ResMut<Toast>,
     mut next: ResMut<NextState<AppState>>,
+    mut autosave: MessageWriter<Autosave>,
 ) {
     // Mehrere Messages im selben Tick zählen nur einmal.
     if descend.read().count() == 0 {
@@ -191,4 +193,5 @@ fn descend_floor(
     // Das Flowfield gehört zur alten Etage (gleiche Raumposition, anderes Layout).
     commands.remove_resource::<PlayerFlow>();
     toast.show(format!("Etage {depth} von {MAX_DEPTH}"));
+    autosave.write(Autosave);
 }

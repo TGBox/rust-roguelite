@@ -18,6 +18,7 @@ use super::{MenuAction, button, hint, perform, screen_root, title};
 use crate::{
     profile::MetaProfile,
     run::{ChosenSeed, LastRun, Run},
+    save,
     states::{AppState, InGameState},
 };
 
@@ -52,19 +53,27 @@ fn spawn_main_menu(mut commands: Commands, profile: Res<MetaProfile>) {
         "Runs {}   ·   Siege {}   ·   Beste Etage {}   ·   Kills {}   ·   Gesperrte Items {locked}",
         p.runs, p.victories, p.best_depth, p.total_kills
     );
-    commands.spawn((
-        Name::new("MainMenu"),
-        DespawnOnExit(AppState::MainMenu),
-        screen_root(Color::NONE),
-        children![
-            title("Rust Roguelite"),
-            button("Neuer Run", MenuAction::StartRun),
-            button("Seed eingeben", MenuAction::EnterSeed),
-            button("Beenden", MenuAction::Quit),
-            hint(&stats),
-            hint("Enter: Start   ·   WASD: laufen   ·   Pfeiltasten: schießen   ·   E: Bombe   ·   Esc: Pause"),
-        ],
-    ));
+    // `with_children` statt `children![]`: Der „Fortsetzen“-Button gibt es nur
+    // manchmal, und das Makro kennt keine Bedingungen.
+    commands
+        .spawn((
+            Name::new("MainMenu"),
+            DespawnOnExit(AppState::MainMenu),
+            screen_root(Color::NONE),
+        ))
+        .with_children(|menu| {
+            menu.spawn(title("Rust Roguelite"));
+            if save::exists() {
+                menu.spawn(button("Fortsetzen", MenuAction::Continue));
+            }
+            menu.spawn(button("Neuer Run", MenuAction::StartRun));
+            menu.spawn(button("Seed eingeben", MenuAction::EnterSeed));
+            menu.spawn(button("Beenden", MenuAction::Quit));
+            menu.spawn(hint(&stats));
+            menu.spawn(hint(
+                "Enter: neuer Run   ·   WASD: laufen   ·   Pfeiltasten: schießen   ·   E: Bombe   ·   Esc: Pause",
+            ));
+        });
 }
 
 fn spawn_pause_menu(mut commands: Commands, run: Res<Run>) {

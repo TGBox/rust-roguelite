@@ -8,7 +8,7 @@
 use bevy::prelude::*;
 use dungeon_gen::{
     RoomKind,
-    items::{self, ItemDef, Pool, Reward},
+    items::{self, ItemDb, ItemDef, Pool, Reward},
     loot::{self, Loot, PickupKind, Ware},
     room::CENTER,
 };
@@ -17,6 +17,7 @@ use crate::{
     TILE_SIZE,
     assets::GameAssets,
     combat::{EnemyKilled, Health},
+    item_db::ItemDatabase,
     physics::{Body, Position},
     pixel_art,
     player::Player,
@@ -62,7 +63,7 @@ pub struct LootMarker {
 
 /// Legt beim ersten Betreten fest, was in Spezialräumen liegt.
 /// Normale Räume bekommen ihre Beute erst beim Räumen.
-pub fn prepare_room_loot(run: &mut Run, room: &CurrentRoom) {
+pub fn prepare_room_loot(run: &mut Run, room: &CurrentRoom, db: &ItemDb) {
     if !run.loot_prepared.insert(room.pos) {
         return; // schon vorbereitet
     }
@@ -72,18 +73,18 @@ pub fn prepare_room_loot(run: &mut Run, room: &CurrentRoom) {
     if kind == RoomKind::Treasure {
         // Getrennte Borrows auf verschiedene Felder von `run` – erlaubt,
         // weil `run` hier ein normales `&mut Run` ist (siehe `reward_room_clear`).
-        let item = run.pools.draw(Pool::Treasure, &mut run.item_rng);
+        let item = run.pools.draw(db, Pool::Treasure, &mut run.item_rng);
         add_loot(run, room, Loot::Item(item));
     }
     if kind == RoomKind::Shop {
         // Das Angebot kommt aus einem eigenen Stream pro Etage.
         let mut rng = loot::room_rng(run.seed, "shop", run.floor.depth, room.pos);
-        let stock = loot::shop_stock(&mut run.pools, &mut rng);
+        let stock = loot::shop_stock(db, &mut run.pools, &mut rng);
         let entries = run.loot.entry(room.pos).or_default();
         // Waren in einer Reihe quer durch die Raummitte.
         for (i, ware) in stock.into_iter().enumerate() {
             let tile = dungeon_gen::GridPos::new(4 + 2 * i as i32, CENTER.y);
-            let price = loot::price(&ware);
+            let price = loot::price(db, &ware);
             entries.push((tile, Loot::ForSale { ware, price }));
         }
     }
@@ -172,7 +173,7 @@ fn loot_sprite<'a>(
 fn loot_label(loot: &Loot) -> String {
     match loot {
         Loot::Pickup(kind) => format!("{kind:?}"),
-        Loot::Item(item) => item.id.to_string(),
+        Loot::Item(id) => id.to_string(),
         Loot::ForSale { ware, price } => format!("ForSale {ware:?} {price}"),
     }
 }
@@ -181,6 +182,7 @@ fn loot_label(loot: &Loot) -> String {
 
 fn collect_loot(
     mut commands: Commands,
+    db: Res<ItemDatabase>,
     mut run: ResMut<Run>,
     room: Res<CurrentRoom>,
     mut toast: ResMut<Toast>,
@@ -213,10 +215,14 @@ fn collect_loot(
 
         let taken = match &entries[index].1 {
             Loot::Pickup(kind) => pick_up(*kind, &mut run.inventory, &mut health),
-            Loot::Item(item) => {
-                take_item(*item, &mut run.inventory, &mut health, &mut toast);
-                true
-            }
+            Loot::Item(id) => match db.0.get(id) {
+                Some(item) => {
+                    take_item(item, &mut run.inventory, &mut health, &mut toast);
+                    true
+                }
+                // Item wurde per Hot-Reload aus der Datei entfernt: liegen lassen.
+                None => false,
+            },
             Loot::ForSale { ware, price } => {
                 if run.inventory.coins < *price {
                     touching_denied = Some(marker.tile);
@@ -227,10 +233,13 @@ fn collect_loot(
                 } else {
                     let bought = match ware {
                         Ware::Pickup(kind) => pick_up(*kind, &mut run.inventory, &mut health),
-                        Ware::Item(item) => {
-                            take_item(*item, &mut run.inventory, &mut health, &mut toast);
-                            true
-                        }
+                        Ware::Item(id) => match db.0.get(id) {
+                            Some(item) => {
+                                take_item(item, &mut run.inventory, &mut health, &mut toast);
+                                true
+                            }
+                            None => false,
+                        },
                     };
                     if bought {
                         run.inventory.coins -= *price;
@@ -274,11 +283,11 @@ fn pick_up(kind: PickupKind, inv: &mut Inventory, health: &mut Health) -> bool {
     }
 }
 
-fn take_item(item: &'static ItemDef, inv: &mut Inventory, health: &mut Health, toast: &mut Toast) {
+fn take_item(item: &ItemDef, inv: &mut Inventory, health: &mut Health, toast: &mut Toast) {
     let bonus = items::max_health_bonus(&[item]) as f32;
     health.max += bonus;
     health.current += bonus;
-    inv.items.push(item);
+    inv.items.push(item.id.clone());
     toast.show(format!("{} – {}", item.name, item.description));
     info!("Item aufgehoben: {} ({})", item.name, item.id);
 }
@@ -296,6 +305,7 @@ fn apply_reward(reward: Reward, inv: &mut Inventory, health: &mut Health) {
 
 pub fn reward_room_clear(
     mut commands: Commands,
+    db: Res<ItemDatabase>,
     mut messages: MessageReader<RoomCleared>,
     mut run: ResMut<Run>,
     room: Res<CurrentRoom>,
@@ -308,12 +318,16 @@ pub fn reward_room_clear(
             continue;
         }
         // Item-Effekte „pro geräumtem Raum“.
-        for reward in items::room_clear_rewards(&run.inventory.items) {
+        for reward in items::room_clear_rewards(&db.0.resolve(&run.inventory.items)) {
             apply_reward(reward, &mut run.inventory, &mut health);
         }
         // Beute: Boss → Item, normaler Raum → Zufallsdrop.
         let loot = match run.floor.get(room.pos).map(|r| r.kind) {
-            Some(RoomKind::Boss) => Some(Loot::Item(run.pools.draw(Pool::Boss, &mut run.item_rng))),
+            Some(RoomKind::Boss) => Some(Loot::Item(run.pools.draw(
+                &db.0,
+                Pool::Boss,
+                &mut run.item_rng,
+            ))),
             Some(RoomKind::Normal) => {
                 let mut rng = loot::room_rng(run.seed, "drops", run.floor.depth, room.pos);
                 loot::room_clear_drop(&mut rng).map(Loot::Pickup)
@@ -329,13 +343,15 @@ pub fn reward_room_clear(
 }
 
 fn reward_kills(
+    db: Res<ItemDatabase>,
     mut messages: MessageReader<EnemyKilled>,
     mut run: ResMut<Run>,
     mut health: Single<&mut Health, With<Player>>,
 ) {
     let run = &mut *run;
     for _ in messages.read() {
-        for reward in items::kill_rewards(&run.inventory.items, &mut run.effect_rng) {
+        let owned = db.0.resolve(&run.inventory.items);
+        for reward in items::kill_rewards(&owned, &mut run.effect_rng) {
             apply_reward(reward, &mut run.inventory, &mut health);
         }
     }

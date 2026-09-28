@@ -16,7 +16,10 @@ dev = ["bevy/dynamic_linking", "bevy/dev"]
 
 [dependencies]
 bevy.workspace = true
-dungeon_gen.workspace = true
+dungeon_gen = { workspace = true, features = ["serde"] }
+serde.workspace = true
+ron.workspace = true
+thiserror.workspace = true
 
 [lints]
 workspace = true

@@ -8,6 +8,7 @@ use bevy::prelude::*;
 use crate::{
     assets::GameAssets,
     combat::Health,
+    item_db::ItemDatabase,
     pixel_art,
     player::{Player, PlayerStats},
     run::Run,
@@ -26,7 +27,11 @@ impl Plugin for HudPlugin {
                 Update,
                 (
                     update_hearts,
-                    update_counters.run_if(resource_exists_and_changed::<Run>),
+                    // Auch nach einem Hot-Reload: Item-Namen können sich geändert haben.
+                    update_counters.run_if(
+                        resource_exists_and_changed::<Run>
+                            .or_else(resource_changed::<ItemDatabase>),
+                    ),
                     update_stats,
                 )
                     .run_if(in_state(AppState::InGame)),
@@ -172,6 +177,7 @@ fn update_hearts(
 
 fn update_counters(
     run: Res<Run>,
+    db: Res<ItemDatabase>,
     mut counters: Query<(&Counter, &mut Text)>,
     mut items: Single<&mut Text, (With<ItemsText>, Without<Counter>)>,
 ) {
@@ -184,7 +190,10 @@ fn update_counters(
             Counter::Depth => format!("Etage {}/{}", run.floor.depth, dungeon_gen::meta::MAX_DEPTH),
         };
     }
-    let names: Vec<&str> = inv.items.iter().map(|i| i.name).collect();
+    // Eigene Variable: `names` leiht sich Strings aus `owned`, das deshalb
+    // mindestens so lange leben muss (ein Temporärwert wäre sofort weg).
+    let owned = db.0.resolve(&inv.items);
+    let names: Vec<&str> = owned.iter().map(|i| i.name.as_str()).collect();
     items.0 = if names.is_empty() {
         String::new()
     } else {

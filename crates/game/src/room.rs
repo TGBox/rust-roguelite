@@ -16,11 +16,13 @@ use dungeon_gen::{
 use crate::{
     TILE_SIZE,
     assets::GameAssets,
-    enemy::Enemy,
-    inventory::Toast,
+    enemy::{Enemy, spawn_room_enemies},
+    inventory::{self, Toast},
+    item_db::ItemDatabase,
     physics::{BodyKind, Position},
     player::Player,
-    run::Run,
+    progress,
+    run::{ResumeInfo, Run},
     schedule::GameSet,
     states::AppState,
 };
@@ -168,9 +170,10 @@ pub struct RoomTile {
     pub tile: GridPos,
 }
 
-/// Tür-Kachel mit der Wand, in der sie sitzt.
+/// Markiert Tür-Kacheln. Die Richtung braucht es nicht: `door_material`
+/// erkennt Schlüsseltüren über die Kachelposition (`RoomTile::tile`).
 #[derive(Component)]
-pub struct DoorTile(pub Direction);
+pub struct DoorTile;
 
 /// Gehört zum aktuellen Raum und verschwindet beim Raumwechsel
 /// (Projektile, Gegner). Kacheln werden separat über `RoomTile` verwaltet.
@@ -199,19 +202,42 @@ pub fn spawn_room_tiles(commands: &mut Commands, room: &CurrentRoom, assets: &Ga
             // z = 0: Kacheln liegen unter allem anderen.
             Transform::from_translation(room.tile_center(pos).extend(0.0)),
         ));
-        if let Some(dir) = door_direction(pos).filter(|_| tile == Tile::Door) {
-            entity.insert(DoorTile(dir));
+        if tile == Tile::Door {
+            entity.insert(DoorTile);
         }
     }
 }
 
 /// Erster Raum eines Runs. Läuft in der Kette aus `run.rs` nach `start_run`.
-pub fn enter_first_room(mut commands: Commands, mut run: ResMut<Run>, assets: Res<GameAssets>) {
-    let pos = run.floor.start();
-    let room = CurrentRoom::enter(&run, pos);
+/// Erster Raum eines Runs – der Startraum oder beim Fortsetzen der gespeicherte Raum.
+/// Läuft in der Kette aus `run.rs` nach `start_run`.
+pub fn enter_first_room(
+    mut commands: Commands,
+    mut run: ResMut<Run>,
+    assets: Res<GameAssets>,
+    db: Res<ItemDatabase>,
+    resume: Option<Res<ResumeInfo>>,
+) {
+    let pos = resume.map_or(run.floor.start(), |r| r.room);
+    let mut room = CurrentRoom::enter(&run, pos);
     run.visited.insert(pos);
-    run.cleared.insert(pos);
+    if pos == run.floor.start() {
+        run.cleared.insert(pos);
+    }
     spawn_room_tiles(&mut commands, &room, &assets);
+
+    // Beim Fortsetzen kann der Raum Gegner, Beute oder die Falltür enthalten.
+    if !run.cleared.contains(&pos) {
+        if spawn_room_enemies(&mut commands, &run, &room, &assets) > 0 {
+            room.locked = true;
+        } else {
+            run.cleared.insert(pos);
+        }
+    }
+    inventory::prepare_room_loot(&mut run, &room, &db.0);
+    inventory::spawn_room_loot(&mut commands, &run, &room, &assets);
+    progress::spawn_trapdoor(&mut commands, &run, &room, &assets);
+
     commands.insert_resource(room);
 }
 

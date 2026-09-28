@@ -47,6 +47,7 @@ pub fn all_tiles() -> impl Iterator<Item = GridPos> {
 }
 
 /// Was auf einer Kachel liegt.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Tile {
     Floor,
@@ -97,6 +98,7 @@ impl Tile {
 /// Das Feld ist privat: So kann niemand von außen einen `Vec` mit falscher
 /// Länge hineinschmuggeln. Die Invariante `tiles.len() == W * H` wird nur
 /// von den Konstruktoren hergestellt und gilt danach immer.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RoomLayout {
     /// Zeilenweise von unten links (Index = y * ROOM_WIDTH + x).

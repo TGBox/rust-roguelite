@@ -10,6 +10,7 @@ mod combat;
 mod debug;
 mod enemy;
 mod inventory;
+mod item_db;
 mod physics;
 mod pixel_art;
 mod player;
@@ -18,6 +19,7 @@ mod progress;
 mod projectile;
 mod room;
 mod run;
+mod save;
 mod schedule;
 mod states;
 mod transition;
@@ -66,6 +68,8 @@ fn main() {
             bomb::BombPlugin,
             progress::ProgressPlugin,
             profile::ProfilePlugin,
+            item_db::ItemDbPlugin,
+            save::SavePlugin,
             ui::UiPlugin,
             debug::DebugPlugin,
         ))

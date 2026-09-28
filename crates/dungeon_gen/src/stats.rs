@@ -5,6 +5,7 @@
 //! man zuerst aufhebt, wirkt genauso wie eines, das man zuletzt aufhebt.
 
 /// Welcher Wert verändert wird.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Stat {
     /// Schaden pro Schuss.
@@ -19,12 +20,14 @@ pub enum Stat {
     MoveSpeed,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Op {
     Add(f32),
     Mul(f32),
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Modifier {
     pub stat: Stat,

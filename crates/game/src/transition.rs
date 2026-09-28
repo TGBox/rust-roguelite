@@ -18,11 +18,13 @@ use crate::{
     camera::MainCamera,
     enemy::spawn_room_enemies,
     inventory,
+    item_db::ItemDatabase,
     physics::{Position, PreviousPosition, Velocity},
     player::Player,
     progress,
     room::{CurrentRoom, RoomScoped, RoomTile, spawn_room_tiles},
     run::Run,
+    save::Autosave,
     schedule::GameSet,
     states::InGameState,
 };
@@ -129,6 +131,8 @@ fn animate_transition(
     assets: Res<GameAssets>,
     old_tiles: Query<(Entity, &RoomTile)>,
     mut next: ResMut<NextState<InGameState>>,
+    db: Res<ItemDatabase>,
+    mut autosave: MessageWriter<Autosave>,
 ) {
     pan.elapsed += time.delta_secs();
     let t = (pan.elapsed / PAN_SECS).min(1.0);
@@ -157,10 +161,11 @@ fn animate_transition(
         }
     }
     // Beute festlegen (nur beim ersten Besuch) und alles Liegende spawnen.
-    inventory::prepare_room_loot(&mut run, &room);
+    inventory::prepare_room_loot(&mut run, &room, &db.0);
     inventory::spawn_room_loot(&mut commands, &run, &room, &assets);
     progress::spawn_trapdoor(&mut commands, &run, &room, &assets);
 
     commands.remove_resource::<Pan>();
     next.set(InGameState::Playing);
+    autosave.write(Autosave);
 }

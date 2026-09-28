@@ -14,10 +14,11 @@ use crate::{
     TILE_SIZE,
     assets::GameAssets,
     combat::{BaseMaterial, Faction, Health, Invulnerable},
+    item_db::ItemDatabase,
     physics::{Body, BodyKind, Position, Velocity, physics_body},
     projectile::{Shot, shot_bundle},
     room::CurrentRoom,
-    run::Run,
+    run::{ResumeInfo, Run},
     schedule::GameSet,
     states::{AppState, InGameState},
 };
@@ -102,15 +103,25 @@ pub struct PlayerInput {
 }
 
 /// Läuft in der Kette aus `run.rs`, nachdem der erste Raum existiert.
-pub fn spawn_player(mut commands: Commands, assets: Res<GameAssets>, room: Res<CurrentRoom>) {
+pub fn spawn_player(
+    mut commands: Commands,
+    assets: Res<GameAssets>,
+    room: Res<CurrentRoom>,
+    resume: Option<Res<ResumeInfo>>,
+) {
     let start = room.tile_center(CENTER);
+    // Beim Fortsetzen: gespeichertes Leben statt voller Herzen.
+    let health = resume.map_or(Health::full(PLAYER_MAX_HEALTH), |r| Health {
+        current: r.health,
+        max: r.max_health,
+    });
     commands.spawn((
         Name::new("Player"),
         DespawnOnExit(AppState::InGame),
         Player,
         Faction::Player,
         // Lebenspunkte in halben Herzen: 6 = drei volle Herzen.
-        Health::full(PLAYER_MAX_HEALTH),
+        health,
         Invulnerable::default(),
         BaseMaterial(assets.player_material.clone()),
         PlayerStats::default(),
@@ -134,14 +145,16 @@ pub fn spawn_player(mut commands: Commands, assets: Res<GameAssets>, room: Res<C
 /// `set_if_neq` löst Change Detection nur bei echten Änderungen aus.
 fn refresh_player_stats(
     run: Res<Run>,
+    db: Res<ItemDatabase>,
     mut query: Query<(&mut PlayerStats, &Health), With<Player>>,
 ) {
     let inv = &run.inventory;
+    let items = db.0.resolve(&inv.items);
     for (mut stats, health) in &mut query {
         let missing = (health.max - health.current).max(0.0) as u32;
         stats.set_if_neq(PlayerStats {
-            stats: compute_stats(&inv.items, inv.coins, missing),
-            pattern: shot_pattern(&inv.items),
+            stats: compute_stats(&items, inv.coins, missing),
+            pattern: shot_pattern(&items),
         });
     }
 }
