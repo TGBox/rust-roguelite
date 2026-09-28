@@ -11,6 +11,7 @@ mod debug;
 mod enemy;
 mod inventory;
 mod item_db;
+mod juice;
 mod physics;
 mod pixel_art;
 mod player;
@@ -69,6 +70,7 @@ fn main() {
             progress::ProgressPlugin,
             profile::ProfilePlugin,
             item_db::ItemDbPlugin,
+            juice::JuicePlugin,
             save::SavePlugin,
             ui::UiPlugin,
             debug::DebugPlugin,

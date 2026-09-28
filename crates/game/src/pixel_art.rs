@@ -1,11 +1,14 @@
 // cspell:disable
-// Die ASCII-Pixelkarten sind keine Wörter – Rechtschreibprüfung hier aus.
-
-//! Kleine Pixel-Grafiken, direkt im Code als ASCII-Karten.
+//! Pixel-Grafiken, komplett im Code erzeugt – keine Bilddateien nötig.
 //!
-//! Ein Zeichen = ein Pixel, `.` = durchsichtig. Die Palette ordnet jedem
-//! Zeichen eine Farbe zu. So brauchen wir bis M8 keine Bilddateien und
-//! behalten trotzdem gut unterscheidbare Symbole.
+//! Aufteilung:
+//! - `canvas`: Pixelpuffer, Rauschen, Farbhilfen (reines Rust, testbar)
+//! - `maps`:   handgezeichnete ASCII-Karten und Paletten
+//! - `tiles`:  prozedurale Kacheln (Boden, Mauer, Türen …)
+//! - hier:     Umwandlung in Bevy-`Image`s
+//!
+//! Moderne Modul-Aufteilung: `pixel_art.rs` ist die Wurzel, die Untermodule
+//! liegen im Ordner `pixel_art/` (statt einer `pixel_art/mod.rs`).
 //!
 //! Dargestellt werden die Bilder vergrößert. Dank `ImagePlugin::default_nearest()`
 //! (siehe `main.rs`) bleiben die Pixel dabei scharf.
@@ -16,39 +19,19 @@ use bevy::{
     render::render_resource::{Extent3d, TextureDimension, TextureFormat},
 };
 
+pub mod canvas;
+pub mod maps;
+pub mod tiles;
+
+pub use canvas::{Canvas, Palette, rgba_from_ascii, silhouette_from_ascii};
+pub use maps::*;
+
 /// Vergrößerung beim Anzeigen: 1 Bildpixel = 2 Weltpixel.
 pub const PIXEL_SCALE: f32 = 2.0;
 
-type Palette = &'static [(char, [u8; 4])];
-
-/// Wandelt eine ASCII-Karte in RGBA-Bytes um (Zeile für Zeile, oben zuerst).
-///
-/// # Panics
-/// Bei unterschiedlich langen Zeilen oder Zeichen, die nicht in der Palette
-/// stehen – beides sind Programmierfehler, die sofort auffallen sollen.
-pub fn rgba_from_ascii(rows: &[&str], palette: Palette) -> (u32, u32, Vec<u8>) {
-    let width = rows.first().map_or(0, |r| r.chars().count());
-    let mut data = Vec::with_capacity(width * rows.len() * 4);
-    for (y, row) in rows.iter().enumerate() {
-        assert_eq!(row.chars().count(), width, "Zeile {y} hat falsche Länge");
-        for c in row.chars() {
-            let rgba = if c == '.' {
-                [0, 0, 0, 0]
-            } else {
-                palette
-                    .iter()
-                    .find(|(k, _)| *k == c)
-                    .unwrap_or_else(|| panic!("Zeichen '{c}' fehlt in der Palette"))
-                    .1
-            };
-            data.extend_from_slice(&rgba);
-        }
-    }
-    (width as u32, rows.len() as u32, data)
-}
-
-pub fn image_from_ascii(rows: &[&str], palette: Palette) -> Image {
-    let (width, height, data) = rgba_from_ascii(rows, palette);
+/// RGBA-Bytes → Bevy-Bild. `Rgba8UnormSrgb`: die Bytes sind sRGB-Farben,
+/// genau wie in einem Malprogramm.
+pub fn image_from_rgba(width: u32, height: u32, data: Vec<u8>) -> Image {
     Image::new(
         Extent3d {
             width,
@@ -62,39 +45,25 @@ pub fn image_from_ascii(rows: &[&str], palette: Palette) -> Image {
     )
 }
 
-/// Anzeigegröße eines Bildes (Bildpixel × `PIXEL_SCALE`).
-pub fn display_size(rows: &[&str]) -> Vec2 {
-    let w = rows.first().map_or(0, |r| r.chars().count());
-    Vec2::new(w as f32, rows.len() as f32) * PIXEL_SCALE
+pub fn image_from_ascii(rows: &[&str], palette: Palette) -> Image {
+    let (w, h, data) = rgba_from_ascii(rows, palette);
+    image_from_rgba(w, h, data)
 }
 
-// --- Farben -----------------------------------------------------------------
+pub fn silhouette_image(rows: &[&str]) -> Image {
+    let (w, h, data) = silhouette_from_ascii(rows);
+    image_from_rgba(w, h, data)
+}
 
-const OUTLINE: [u8; 4] = [18, 14, 16, 255];
-const WHITE: [u8; 4] = [255, 250, 240, 255];
+pub fn image_from_canvas(canvas: Canvas) -> Image {
+    image_from_rgba(canvas.width, canvas.height, canvas.data)
+}
 
-// --- Herz --------------------------------------------------------------------
-
-pub const HEART: &[&str] = &[
-    "..KKK.KKK..",
-    ".KRRRKRRRK.",
-    "KRWRRRRRRRK",
-    "KRWRRRRRRRK",
-    "KRRRRRRRRRK",
-    ".KRRRRRRRK.",
-    "..KRRRRRK..",
-    "...KRRRK...",
-    "....KRK....",
-    ".....K.....",
-];
-
-const HEART_FULL: Palette = &[('K', OUTLINE), ('R', [220, 30, 45, 255]), ('W', WHITE)];
-/// Gleiche Karte, aber Füllung dunkel: ein leeres Herz.
-const HEART_EMPTY: Palette = &[
-    ('K', OUTLINE),
-    ('R', [70, 25, 32, 255]),
-    ('W', [95, 45, 52, 255]),
-];
+/// Anzeigegröße eines Bildes (Bildpixel × `PIXEL_SCALE`).
+pub fn display_size(rows: &[&str]) -> Vec2 {
+    let w = canvas::ascii_width(rows);
+    Vec2::new(w as f32, rows.len() as f32) * PIXEL_SCALE
+}
 
 pub fn heart_full() -> Image {
     image_from_ascii(HEART, HEART_FULL)
@@ -104,123 +73,25 @@ pub fn heart_empty() -> Image {
     image_from_ascii(HEART, HEART_EMPTY)
 }
 
-/// Linke Hälfte voll, rechte leer. Die Karte wird dafür spaltenweise umgefärbt.
+/// Linke Hälfte voll, rechte leer: die leere Karte wird spaltenweise übermalt.
 pub fn heart_half() -> Image {
-    let (w, h, mut data) = rgba_from_ascii(HEART, HEART_FULL);
-    let (_, _, empty) = rgba_from_ascii(HEART, HEART_EMPTY);
-    let (w, h) = (w as usize, h as usize);
-    for y in 0..h {
-        for x in (w / 2 + 1)..w {
-            let i = (y * w + x) * 4;
-            data[i..i + 4].copy_from_slice(&empty[i..i + 4]);
+    let (w, h, empty) = rgba_from_ascii(HEART, HEART_EMPTY);
+    let mut canvas = Canvas::new(w, h, canvas::TRANSPARENT);
+    canvas.data = empty;
+    let mut full = Canvas::new(w, h, canvas::TRANSPARENT);
+    full.draw_ascii(HEART, HEART_FULL, 0, 0);
+    for y in 0..h as i32 {
+        for x in 0..=(w as i32 / 2) {
+            canvas.set(x, y, full.get(x, y));
         }
     }
-    Image::new(
-        Extent3d {
-            width: w as u32,
-            height: h as u32,
-            depth_or_array_layers: 1,
-        },
-        TextureDimension::D2,
-        data,
-        TextureFormat::Rgba8UnormSrgb,
-        RenderAssetUsages::default(),
-    )
+    image_from_canvas(canvas)
 }
 
-// --- Münze, Schlüssel, Bombe, Item ---------------------------------------------
-
-pub const COIN: &[&str] = &[
-    "..KKKK..", ".KYYYYK.", "KYWYYYYK", "KYWYYOYK", "KYYYYOYK", "KYYYYOYK", ".KYOOOK.", "..KKKK..",
-];
-
-pub const COIN_PALETTE: Palette = &[
-    ('K', OUTLINE),
-    ('Y', [245, 200, 50, 255]),
-    ('O', [185, 130, 20, 255]),
-    ('W', WHITE),
-];
-
-pub const KEY: &[&str] = &[
-    ".KKK.......",
-    "KGGGKKKKKKK",
-    "KG.GGGGGGGK",
-    "KGGGKKKGKGK",
-    ".KKK...K.K.",
-];
-
-pub const KEY_PALETTE: Palette = &[('K', OUTLINE), ('G', [205, 210, 225, 255])];
-
-pub const BOMB: &[&str] = &[
-    "......Y..",
-    ".....O.Y.",
-    "....K....",
-    "..KKKKK..",
-    ".KBBBBBK.",
-    "KBWBBBBBK",
-    "KBWBBBBBK",
-    "KBBBBBBBK",
-    ".KBBBBBK.",
-    "..KKKKK..",
-];
-
-pub const BOMB_PALETTE: Palette = &[
-    ('K', OUTLINE),
-    // Mittelgrau statt Schwarz: sonst verschwindet die Bombe auf dem dunklen Boden.
-    ('B', [100, 100, 118, 255]),
-    ('W', [190, 190, 205, 255]),
-    ('O', [240, 140, 30, 255]),
-    ('Y', [255, 230, 90, 255]),
-];
-
-/// Falltür (Holzrahmen, dunkles Loch) – mit anderer Palette der goldene Ausgang.
-pub const TRAPDOOR: &[&str] = &[
-    ".KKKKKKKKKKKK.",
-    "KWWWWWWWWWWWWK",
-    "KWHHHHHHHHHHWK",
-    "KWHHHHHHHHHHWK",
-    "KWHHHHHHHHHHWK",
-    "KWHHHHHHHHHHWK",
-    "KWHHHHHHHHHHWK",
-    "KWHHHHHHHHHHWK",
-    "KWWWWWWWWWWWWK",
-    ".KKKKKKKKKKKK.",
-];
-
-pub const TRAPDOOR_PALETTE: Palette = &[
-    ('K', OUTLINE),
-    ('W', [125, 82, 45, 255]),
-    ('H', [6, 5, 8, 255]),
-];
-
-pub const EXIT_PALETTE: Palette = &[
-    ('K', OUTLINE),
-    ('W', [235, 195, 60, 255]),
-    ('H', [255, 245, 190, 255]),
-];
-
-/// Edelstein über einem Steinsockel.
-pub const ITEM: &[&str] = &[
-    ".....KK.....",
-    "....KCCK....",
-    "...KCWCCK...",
-    "..KCWCCCCK..",
-    "...KCCCCK...",
-    "....KCCK....",
-    ".....KK.....",
-    "............",
-    ".KKKKKKKKKK.",
-    ".KSSSSSSSSK.",
-    "..KSSSSSSK..",
-    "..KKKKKKKK..",
-];
-
-pub const ITEM_PALETTE: Palette = &[
-    ('K', OUTLINE),
-    ('C', [80, 225, 235, 255]),
-    ('W', WHITE),
-    ('S', [140, 132, 125, 255]),
-];
+/// Ein einzelnes weißes Pixel – Grundlage für Partikel (per `Sprite::color` eingefärbt).
+pub fn white_pixel() -> Image {
+    image_from_rgba(1, 1, vec![255, 255, 255, 255])
+}
 
 #[cfg(test)]
 mod tests {
@@ -229,7 +100,7 @@ mod tests {
     #[test]
     fn all_sprites_are_rectangular_and_fully_mapped() {
         // `rgba_from_ascii` panict bei Fehlern – der Test ruft es nur für alle auf.
-        let sprites: [(&[&str], Palette); 8] = [
+        let sprites: &[(&[&str], Palette)] = &[
             (TRAPDOOR, TRAPDOOR_PALETTE),
             (TRAPDOOR, EXIT_PALETTE),
             (HEART, HEART_FULL),
@@ -238,17 +109,19 @@ mod tests {
             (KEY, KEY_PALETTE),
             (BOMB, BOMB_PALETTE),
             (ITEM, ITEM_PALETTE),
+            (PLAYER, PLAYER_PALETTE),
+            (CHASER, CHASER_PALETTE),
+            (SHOOTER, SHOOTER_PALETTE),
+            (CHARGER, CHARGER_PALETTE),
+            (BOSS, BOSS_PALETTE),
+            (SHOT, TEAR_PALETTE),
+            (SHOT, ENEMY_SHOT_PALETTE),
+            (ROCK, ROCK_PALETTE),
+            (KEYHOLE, KEYHOLE_PALETTE),
         ];
         for (rows, palette) in sprites {
             let (w, h, data) = rgba_from_ascii(rows, palette);
             assert_eq!(data.len(), (w * h * 4) as usize);
         }
-    }
-
-    #[test]
-    fn dot_is_transparent() {
-        let (_, _, data) = rgba_from_ascii(&[".K"], &[('K', OUTLINE)]);
-        assert_eq!(&data[0..4], &[0, 0, 0, 0]);
-        assert_eq!(&data[4..8], &OUTLINE);
     }
 }

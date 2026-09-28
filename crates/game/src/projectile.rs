@@ -8,6 +8,7 @@ use crate::{
     TILE_SIZE,
     assets::GameAssets,
     combat::{Faction, Health},
+    juice::Fx,
     physics::{Body, BodyKind, Position, TileHit, Velocity, physics_body},
     room::RoomScoped,
     schedule::GameSet,
@@ -57,9 +58,9 @@ pub struct Shot {
 }
 
 pub fn shot_bundle(shot: Shot, assets: &GameAssets) -> impl Bundle {
-    let material = match shot.faction {
-        Faction::Player => &assets.tear_material,
-        Faction::Enemy => &assets.enemy_shot_material,
+    let art = match shot.faction {
+        Faction::Player => &assets.actors.tear,
+        Faction::Enemy => &assets.actors.enemy_shot,
     };
     (
         Name::new("Shot"),
@@ -82,8 +83,11 @@ pub fn shot_bundle(shot: Shot, assets: &GameAssets) -> impl Bundle {
             },
             5.0,
         ),
-        Mesh2d(assets.tear_mesh.clone()),
-        MeshMaterial2d(material.clone()),
+        Sprite {
+            image: art.image.clone(),
+            custom_size: Some(art.size),
+            ..default()
+        },
     )
 }
 
@@ -106,13 +110,29 @@ fn tick_lifetime(
 fn despawn_on_tile_hit(
     mut commands: Commands,
     mut hits: MessageReader<TileHit>,
-    projectiles: Query<(), With<Projectile>>,
+    projectiles: Query<(&Position, &Projectile)>,
+    mut fx: MessageWriter<Fx>,
 ) {
     for hit in hits.read() {
         // Der Physik-Code meldet Treffer für ALLE Körper. Hier interessieren nur Projektile.
-        if projectiles.contains(hit.entity) {
-            commands.entity(hit.entity).try_despawn();
-        }
+        let Ok((pos, projectile)) = projectiles.get(hit.entity) else {
+            continue;
+        };
+        commands.entity(hit.entity).try_despawn();
+        // Kleiner Spritzer an der Wand.
+        fx.write(Fx::Burst {
+            at: pos.0,
+            color: splash_color(projectile.faction),
+            count: 5,
+            speed: 60.0,
+        });
+    }
+}
+
+fn splash_color(faction: Faction) -> Color {
+    match faction {
+        Faction::Player => Color::srgb(0.55, 0.78, 0.98),
+        Faction::Enemy => Color::srgb(0.95, 0.35, 0.30),
     }
 }
 

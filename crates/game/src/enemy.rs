@@ -16,7 +16,8 @@ use dungeon_gen::{EnemyKind, GridPos, meta, pathing::FlowField, spawns};
 use crate::{
     TILE_SIZE,
     assets::GameAssets,
-    combat::{BaseMaterial, ContactDamage, Faction, Health},
+    combat::{ContactDamage, Faction, FlashArt, Health},
+    juice::{FxColor, Wobble},
     physics::{Body, BodyKind, Position, Velocity, physics_body},
     player::Player,
     projectile::{Shot, shot_bundle},
@@ -81,6 +82,25 @@ pub struct Shooter {
 #[derive(Component)]
 pub struct Charger {
     state: ChargeState,
+}
+
+/// Dauer des Ausholens vor dem Sprint (s).
+const CHARGE_WINDUP_SECS: f32 = 0.4;
+
+/// Nur lesende Abfragen für die Optik (`juice.rs`). Der Zustand selbst bleibt
+/// privat: Von außen kann niemand die Zustandsmaschine durcheinanderbringen.
+impl Charger {
+    /// 0.0 (fängt an) … 1.0 (sprintet gleich), sonst `None`.
+    pub fn windup_progress(&self) -> Option<f32> {
+        match self.state {
+            ChargeState::Windup { remaining, .. } => Some(1.0 - remaining / CHARGE_WINDUP_SECS),
+            _ => None,
+        }
+    }
+
+    pub fn is_stunned(&self) -> bool {
+        matches!(self.state, ChargeState::Stunned { .. })
+    }
 }
 
 /// Zustandsmaschine des Chargers. `Copy`, damit wir den alten Zustand lesen
@@ -166,12 +186,15 @@ pub fn spawn_room_enemies(
         let mut s = stats(spawn.kind);
         s.health *= meta::enemy_health_multiplier(depth);
         s.mobility.speed *= meta::enemy_speed_multiplier(depth);
-        let (mesh, material) = match spawn.kind {
-            EnemyKind::Chaser => (&assets.enemy_mesh, &assets.chaser_material),
-            EnemyKind::Shooter => (&assets.enemy_mesh, &assets.shooter_material),
-            EnemyKind::Charger => (&assets.enemy_mesh, &assets.charger_material),
-            EnemyKind::Boss => (&assets.boss_mesh, &assets.boss_material),
+        let a = &assets.actors;
+        // Grafik und Partikelfarbe je Typ.
+        let (art, blood) = match spawn.kind {
+            EnemyKind::Chaser => (&a.chaser, Color::srgb(0.80, 0.25, 0.22)),
+            EnemyKind::Shooter => (&a.shooter, Color::srgb(0.95, 0.60, 0.20)),
+            EnemyKind::Charger => (&a.charger, Color::srgb(0.35, 0.45, 0.90)),
+            EnemyKind::Boss => (&a.boss, Color::srgb(0.60, 0.20, 0.55)),
         };
+        let pos = room.tile_center(spawn.pos);
         let mut entity = commands.spawn((
             Name::new(format!("{:?}", spawn.kind)),
             Enemy,
@@ -183,7 +206,7 @@ pub fn spawn_room_enemies(
             RoomScoped,
             DespawnOnExit(AppState::InGame),
             physics_body(
-                room.tile_center(spawn.pos),
+                pos,
                 Vec2::ZERO,
                 Body {
                     half_size: Vec2::splat(s.half_tiles * TILE_SIZE),
@@ -191,9 +214,14 @@ pub fn spawn_room_enemies(
                 },
                 8.0,
             ),
-            Mesh2d(mesh.clone()),
-            MeshMaterial2d(material.clone()),
-            BaseMaterial(material.clone()),
+            Sprite {
+                image: art.image.clone(),
+                custom_size: Some(art.size),
+                ..default()
+            },
+            FlashArt::from(art),
+            Wobble::new(art.size, pos),
+            FxColor(blood),
         ));
         // Das Verhalten hängt vom Typ ab: eine Komponente pro Verhalten.
         match spawn.kind {
@@ -363,7 +391,6 @@ fn charger_ai(
     player: Single<&Position, With<Player>>,
     mut query: Query<(&Position, &mut Velocity, &Mobility, &mut Charger), Without<Asleep>>,
 ) {
-    const WINDUP_SECS: f32 = 0.4;
     const STUN_SECS: f32 = 0.8;
     const CHARGE_SPEED_TILES: f32 = 9.0;
     const ALIGN_TOLERANCE_TILES: f32 = 0.45;
@@ -392,7 +419,7 @@ fn charger_ai(
                         Vec2::new(0.0, to_player.y.signum())
                     };
                     ChargeState::Windup {
-                        remaining: WINDUP_SECS,
+                        remaining: CHARGE_WINDUP_SECS,
                         dir,
                     }
                 } else {

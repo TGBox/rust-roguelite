@@ -150,9 +150,9 @@ fn kill_player(mut next: ResMut<NextState<InGameState>>) {
     next.set(InGameState::Dying);
 }
 
-/// Alles, was zur Spielwelt gehört, hat ein `Mesh2d` oder einen `Body`.
+/// Alles, was zur Spielwelt gehört, hat ein `Sprite` oder einen `Body`.
 /// Im Hauptmenü muss diese Zahl 0 sein.
-fn log_entity_count(world_entities: Query<(), Or<(With<Mesh2d>, With<Body>)>>) {
+fn log_entity_count(world_entities: Query<(), Or<(With<Sprite>, With<Body>)>>) {
     let count = world_entities.iter().count();
     if count == 0 {
         info!("Hauptmenü: keine Spielwelt-Entities übrig ✔");

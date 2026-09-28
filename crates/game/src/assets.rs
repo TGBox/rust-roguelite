@@ -1,17 +1,16 @@
-//! Gemeinsame Meshes und Materialien.
+//! Gemeinsame Grafiken: Sprites, Kachel-Texturen, Schrift.
 //!
 //! Einmal erzeugen, überall per Handle klonen: Ein `Handle` ist nur ein
 //! Referenzzähler, die eigentlichen GPU-Daten existieren genau einmal.
-//! In M8 kommen hier Sprites und Sounds dazu.
+//! Seit M8 ist fast alles Pixel-Art aus `pixel_art` statt farbiger Formen.
 
 use bevy::prelude::*;
 
+use dungeon_gen::GridPos;
+
 use crate::{
     TILE_SIZE,
-    enemy::{BOSS_HALF_TILES, ENEMY_HALF_TILES},
-    pixel_art,
-    player::PLAYER_RADIUS_TILES,
-    projectile::TEAR_RADIUS_TILES,
+    pixel_art::{self, Palette},
 };
 
 pub struct GameAssetsPlugin;
@@ -26,29 +25,6 @@ impl Plugin for GameAssetsPlugin {
 
 #[derive(Resource)]
 pub struct GameAssets {
-    pub tile_mesh: Handle<Mesh>,
-    pub floor: Handle<ColorMaterial>,
-    pub wall: Handle<ColorMaterial>,
-    pub rock: Handle<ColorMaterial>,
-    pub pit: Handle<ColorMaterial>,
-    pub door_open: Handle<ColorMaterial>,
-    pub door_closed: Handle<ColorMaterial>,
-    /// Tür zu einem verschlossenen Raum (Schlüssel nötig).
-    pub door_keyed: Handle<ColorMaterial>,
-    pub player_mesh: Handle<Mesh>,
-    pub player_material: Handle<ColorMaterial>,
-    pub player_dead_material: Handle<ColorMaterial>,
-    pub tear_mesh: Handle<Mesh>,
-    pub tear_material: Handle<ColorMaterial>,
-    pub enemy_mesh: Handle<Mesh>,
-    pub boss_mesh: Handle<Mesh>,
-    pub chaser_material: Handle<ColorMaterial>,
-    pub shooter_material: Handle<ColorMaterial>,
-    pub charger_material: Handle<ColorMaterial>,
-    pub boss_material: Handle<ColorMaterial>,
-    pub enemy_shot_material: Handle<ColorMaterial>,
-    /// Kurzes weißes Aufblitzen bei Treffern.
-    pub flash_material: Handle<ColorMaterial>,
     /// Schrift mit vollem Zeichensatz (Umlaute, –, ×, ✔). Wird allen Texten
     /// automatisch zugewiesen, siehe `ui::apply_game_font`.
     pub font: Handle<Font>,
@@ -56,9 +32,11 @@ pub struct GameAssets {
     pub explosion_mesh: Handle<Mesh>,
     pub explosion_material: Handle<ColorMaterial>,
     pub sprites: Sprites,
+    pub tiles: TileArt,
+    pub actors: ActorSprites,
 }
 
-/// Pixel-Grafiken aus `pixel_art.rs`.
+/// Pickups, HUD-Symbole und Partikel aus `pixel_art`.
 pub struct Sprites {
     pub heart_full: Handle<Image>,
     pub heart_half: Handle<Image>,
@@ -69,75 +47,122 @@ pub struct Sprites {
     pub item: Handle<Image>,
     pub trapdoor: Handle<Image>,
     pub exit: Handle<Image>,
+    /// 1 × 1 weiß – für Partikel, per `Sprite::color` eingefärbt.
+    pub pixel: Handle<Image>,
+}
+
+/// Kachel-Texturen (prozedural, siehe `pixel_art::tiles`).
+pub struct TileArt {
+    /// Mehrere Bodenvarianten, damit der Boden nicht wie ein Raster aussieht.
+    pub floors: Vec<Handle<Image>>,
+    pub wall: Handle<Image>,
+    pub rock: Handle<Image>,
+    pub pit: Handle<Image>,
+    pub door_open: Handle<Image>,
+    pub door_closed: Handle<Image>,
+    /// Tür zu einem verschlossenen Raum (Schlüssel nötig).
+    pub door_keyed: Handle<Image>,
+}
+
+impl TileArt {
+    /// Bodenkachel für eine Position – immer dieselbe für dieselbe Stelle.
+    pub fn floor_at(&self, room: GridPos, tile: GridPos) -> Handle<Image> {
+        // Raumposition in den Seed mischen: Jeder Raum hat sein eigenes Muster.
+        let room_seed = (room.x as u32).wrapping_mul(31) ^ (room.y as u32).wrapping_mul(977);
+        let variant = pixel_art::tiles::floor_variant(tile.x, tile.y, room_seed);
+        self.floors[variant as usize].clone()
+    }
+}
+
+/// Bild, weiße Treffer-Silhouette und Anzeigegröße einer Figur.
+#[derive(Clone)]
+pub struct ActorArt {
+    pub image: Handle<Image>,
+    pub flash: Handle<Image>,
+    pub size: Vec2,
+}
+
+pub struct ActorSprites {
+    pub player: ActorArt,
+    pub chaser: ActorArt,
+    pub shooter: ActorArt,
+    pub charger: ActorArt,
+    pub boss: ActorArt,
+    pub tear: ActorArt,
+    pub enemy_shot: ActorArt,
+}
+
+fn actor(images: &mut Assets<Image>, rows: &[&str], palette: Palette, scale: f32) -> ActorArt {
+    ActorArt {
+        image: images.add(pixel_art::image_from_ascii(rows, palette)),
+        flash: images.add(pixel_art::silhouette_image(rows)),
+        // Kleine Figuren leicht größer als ihre Hitbox: wirkt fairer, weil
+        // Treffer „knapp daneben“ nicht zählen.
+        size: pixel_art::display_size(rows) * scale / pixel_art::PIXEL_SCALE,
+    }
 }
 
 /// `FromWorld` statt `Default`: Wir brauchen Zugriff auf andere Ressourcen
-/// (`Assets<Mesh>`, `Assets<ColorMaterial>`), um die Handles zu erzeugen.
+/// (`Assets<Image>`, `Assets<Mesh>` …), um die Handles zu erzeugen.
 impl FromWorld for GameAssets {
     fn from_world(world: &mut World) -> Self {
-        // Eigener Block, damit der mutable Borrow auf `Assets<Mesh>` endet,
-        // bevor wir `Assets<ColorMaterial>` ausleihen.
-        let (tile_mesh, player_mesh, tear_mesh, enemy_mesh, boss_mesh, explosion_mesh) = {
-            let mut meshes = world.resource_mut::<Assets<Mesh>>();
-            (
-                // 1 px kleiner als die Kachel: ergibt ein dezentes Raster.
-                meshes.add(Rectangle::from_size(Vec2::splat(TILE_SIZE - 1.0))),
-                meshes.add(Circle::new(PLAYER_RADIUS_TILES * TILE_SIZE)),
-                meshes.add(Circle::new(TEAR_RADIUS_TILES * TILE_SIZE)),
-                meshes.add(Rectangle::from_size(Vec2::splat(
-                    ENEMY_HALF_TILES * 2.0 * TILE_SIZE,
-                ))),
-                meshes.add(Rectangle::from_size(Vec2::splat(
-                    BOSS_HALF_TILES * 2.0 * TILE_SIZE,
-                ))),
-                meshes.add(Circle::new(crate::bomb::BLAST_RADIUS_TILES * TILE_SIZE)),
-            )
-        };
-
+        // Jeder Block leiht genau einen Asset-Speicher mutable aus und gibt ihn
+        // am Blockende zurück – zwei `resource_mut` gleichzeitig ginge nicht.
+        let explosion_mesh = world
+            .resource_mut::<Assets<Mesh>>()
+            .add(Circle::new(crate::bomb::BLAST_RADIUS_TILES * TILE_SIZE));
+        let explosion_material = world
+            .resource_mut::<Assets<ColorMaterial>>()
+            .add(Color::srgb(1.0, 0.65, 0.20));
         let font = world.resource::<AssetServer>().load("fonts/DejaVuSans.ttf");
-        let sprites = {
-            let mut images = world.resource_mut::<Assets<Image>>();
-            use pixel_art::*;
-            Sprites {
-                heart_full: images.add(heart_full()),
-                heart_half: images.add(heart_half()),
-                heart_empty: images.add(heart_empty()),
-                coin: images.add(image_from_ascii(COIN, COIN_PALETTE)),
-                key: images.add(image_from_ascii(KEY, KEY_PALETTE)),
-                bomb: images.add(image_from_ascii(BOMB, BOMB_PALETTE)),
-                item: images.add(image_from_ascii(ITEM, ITEM_PALETTE)),
-                trapdoor: images.add(image_from_ascii(TRAPDOOR, TRAPDOOR_PALETTE)),
-                exit: images.add(image_from_ascii(TRAPDOOR, EXIT_PALETTE)),
-            }
+
+        let mut images = world.resource_mut::<Assets<Image>>();
+        let images = &mut *images;
+        use pixel_art::{tiles, *};
+
+        let sprites = Sprites {
+            heart_full: images.add(heart_full()),
+            heart_half: images.add(heart_half()),
+            heart_empty: images.add(heart_empty()),
+            coin: images.add(image_from_ascii(COIN, COIN_PALETTE)),
+            key: images.add(image_from_ascii(KEY, KEY_PALETTE)),
+            bomb: images.add(image_from_ascii(BOMB, BOMB_PALETTE)),
+            item: images.add(image_from_ascii(ITEM, ITEM_PALETTE)),
+            trapdoor: images.add(image_from_ascii(TRAPDOOR, TRAPDOOR_PALETTE)),
+            exit: images.add(image_from_ascii(TRAPDOOR, EXIT_PALETTE)),
+            pixel: images.add(white_pixel()),
         };
 
-        let mut materials = world.resource_mut::<Assets<ColorMaterial>>();
+        let tiles = TileArt {
+            floors: (0..tiles::FLOOR_VARIANTS)
+                .map(|v| images.add(image_from_canvas(tiles::floor(v))))
+                .collect(),
+            wall: images.add(image_from_canvas(tiles::wall())),
+            rock: images.add(image_from_canvas(tiles::rock())),
+            pit: images.add(image_from_canvas(tiles::pit())),
+            door_open: images.add(image_from_canvas(tiles::door_open())),
+            door_closed: images.add(image_from_canvas(tiles::door_closed())),
+            door_keyed: images.add(image_from_canvas(tiles::door_keyed())),
+        };
+
+        let actors = ActorSprites {
+            player: actor(images, PLAYER, PLAYER_PALETTE, 2.0),
+            chaser: actor(images, CHASER, CHASER_PALETTE, 2.2),
+            shooter: actor(images, SHOOTER, SHOOTER_PALETTE, 2.2),
+            charger: actor(images, CHARGER, CHARGER_PALETTE, 2.2),
+            // 20 Bildpixel × 2,7 ≈ 54 Weltpixel – passend zur Boss-Hitbox (≈ 51).
+            boss: actor(images, BOSS, BOSS_PALETTE, 2.7),
+            tear: actor(images, SHOT, TEAR_PALETTE, 2.0),
+            enemy_shot: actor(images, SHOT, ENEMY_SHOT_PALETTE, 2.0),
+        };
+
         Self {
-            tile_mesh,
-            floor: materials.add(Color::srgb(0.16, 0.14, 0.13)),
-            wall: materials.add(Color::srgb(0.35, 0.30, 0.28)),
-            rock: materials.add(Color::srgb(0.50, 0.47, 0.44)),
-            pit: materials.add(Color::srgb(0.02, 0.02, 0.03)),
-            door_open: materials.add(Color::srgb(0.22, 0.18, 0.12)),
-            door_closed: materials.add(Color::srgb(0.55, 0.35, 0.15)),
-            door_keyed: materials.add(Color::srgb(0.85, 0.70, 0.20)),
-            player_mesh,
-            player_material: materials.add(Color::srgb(0.85, 0.75, 0.55)),
-            player_dead_material: materials.add(Color::srgb(0.55, 0.12, 0.12)),
-            tear_mesh,
-            tear_material: materials.add(Color::srgb(0.55, 0.75, 0.95)),
-            enemy_mesh,
-            boss_mesh,
-            chaser_material: materials.add(Color::srgb(0.78, 0.25, 0.22)),
-            shooter_material: materials.add(Color::srgb(0.90, 0.55, 0.15)),
-            charger_material: materials.add(Color::srgb(0.35, 0.40, 0.85)),
-            boss_material: materials.add(Color::srgb(0.60, 0.15, 0.50)),
-            enemy_shot_material: materials.add(Color::srgb(0.95, 0.35, 0.30)),
-            flash_material: materials.add(Color::srgb(1.0, 1.0, 1.0)),
             font,
-            sprites,
             explosion_mesh,
-            explosion_material: materials.add(Color::srgb(1.0, 0.65, 0.20)),
+            explosion_material,
+            sprites,
+            tiles,
+            actors,
         }
     }
 }

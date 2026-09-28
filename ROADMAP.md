@@ -158,6 +158,11 @@ Jeder Meilenstein endet mit etwas **Spielbarem oder Testbarem**. „DoD“ = Def
 - Audio: Schuss, Treffer, Tod, Musik pro Etage.
 - Screenshake, Hitstop, Treffer-Flash, Partikel.
 - **DoD:** fühlt sich wie ein Spiel an, nicht wie ein Prototyp.
+- **M8a (umgesetzt, Test ausstehend):** Pixel-Art im Code (`pixel_art/`: ASCII-Figuren,
+  prozedurale Kacheln mit Rauschen, weiße Treffer-Silhouetten), `juice.rs` mit
+  `Fx`-Messages: Trauma-Screenshake, Hitstop über `Time<Virtual>`-Tempo, Partikel,
+  Lauf-Wackeln, Blickrichtung, Charger-Ausholen (rot pulsierend, geduckt).
+- **M8b (offen):** prozedural synthetisierte Sounds + Musik; Minimap-Feinschliff.
 
 ### M9 – Polish & Release
 - Einstellungen (Lautstärke, Tastenbelegung) über Bevys `SettingsPlugin`.

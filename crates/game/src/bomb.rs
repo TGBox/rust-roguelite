@@ -14,6 +14,7 @@ use crate::{
     TILE_SIZE,
     assets::GameAssets,
     combat::{Damage, Health},
+    juice::Fx,
     physics::Position,
     pixel_art,
     player::{Player, PlayerInput},
@@ -94,8 +95,9 @@ fn tick_bombs(
     targets: Query<(Entity, &Position, Has<Player>), With<Health>>,
     mut room: ResMut<CurrentRoom>,
     mut run: ResMut<Run>,
-    mut tiles: Query<(&RoomTile, &mut MeshMaterial2d<ColorMaterial>)>,
+    mut tiles: Query<(&RoomTile, &mut Sprite), Without<Bomb>>,
     mut damage: MessageWriter<Damage>,
+    mut fx: MessageWriter<Fx>,
 ) {
     let dt = time.delta_secs();
     for (entity, transform, mut bomb, mut sprite) in &mut bombs {
@@ -137,12 +139,26 @@ fn tick_bombs(
         if !destroyed.is_empty() {
             room.revision += 1;
             run.layout_overrides.insert(room.pos, room.layout.clone());
-            for (room_tile, mut material) in &mut tiles {
+            for (room_tile, mut tile_sprite) in &mut tiles {
                 if room_tile.room == room.pos && destroyed.contains(&room_tile.tile) {
-                    material.0 = assets.floor.clone();
+                    tile_sprite.image = assets.tiles.floor_at(room.pos, room_tile.tile);
+                    fx.write(Fx::Burst {
+                        at: room.tile_center(room_tile.tile),
+                        color: Color::srgb(0.55, 0.52, 0.48),
+                        count: 10,
+                        speed: 110.0,
+                    });
                 }
             }
         }
+        fx.write(Fx::Burst {
+            at: center,
+            color: Color::srgb(1.0, 0.6, 0.2),
+            count: 30,
+            speed: 240.0,
+        });
+        fx.write(Fx::Shake(0.7));
+        fx.write(Fx::Hitstop(0.05));
 
         // 3. Blitz anzeigen, Bombe entfernen.
         commands.spawn((

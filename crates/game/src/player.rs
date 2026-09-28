@@ -13,8 +13,9 @@ use dungeon_gen::{
 use crate::{
     TILE_SIZE,
     assets::GameAssets,
-    combat::{BaseMaterial, Faction, Health, Invulnerable},
+    combat::{Faction, FlashArt, Health, Invulnerable},
     item_db::ItemDatabase,
+    juice::Wobble,
     physics::{Body, BodyKind, Position, Velocity, physics_body},
     projectile::{Shot, shot_bundle},
     room::CurrentRoom,
@@ -23,8 +24,6 @@ use crate::{
     states::{AppState, InGameState},
 };
 
-/// Radius der Grafik (in Kacheln).
-pub const PLAYER_RADIUS_TILES: f32 = 0.4;
 /// Hitbox bewusst kleiner als die Grafik: fühlt sich fairer an.
 const PLAYER_HALF_TILES: f32 = 0.3;
 /// Leben in halben Herzen.
@@ -110,6 +109,7 @@ pub fn spawn_player(
     resume: Option<Res<ResumeInfo>>,
 ) {
     let start = room.tile_center(CENTER);
+    let art = &assets.actors.player;
     // Beim Fortsetzen: gespeichertes Leben statt voller Herzen.
     let health = resume.map_or(Health::full(PLAYER_MAX_HEALTH), |r| Health {
         current: r.health,
@@ -123,7 +123,6 @@ pub fn spawn_player(
         // Lebenspunkte in halben Herzen: 6 = drei volle Herzen.
         health,
         Invulnerable::default(),
-        BaseMaterial(assets.player_material.clone()),
         PlayerStats::default(),
         ShootCooldown::default(),
         physics_body(
@@ -135,8 +134,13 @@ pub fn spawn_player(
             },
             10.0,
         ),
-        Mesh2d(assets.player_mesh.clone()),
-        MeshMaterial2d(assets.player_material.clone()),
+        Sprite {
+            image: art.image.clone(),
+            custom_size: Some(art.size),
+            ..default()
+        },
+        FlashArt::from(art),
+        Wobble::new(art.size, start),
     ));
 }
 
@@ -159,13 +163,14 @@ fn refresh_player_stats(
     }
 }
 
-/// Platzhalter-Todesanimation: Spieler rot färben. Echte Animation in M8.
-fn show_dead_player(
-    assets: Res<GameAssets>,
-    mut query: Query<(&mut MeshMaterial2d<ColorMaterial>, &mut Visibility), With<Player>>,
-) {
-    for (mut material, mut visibility) in &mut query {
-        material.0 = assets.player_dead_material.clone();
+/// Der Spieler kippt um: auf den Kopf gestellt und dunkelrot eingefärbt.
+/// Die Wackel-Animation stoppt von selbst, weil die virtuelle Zeit steht.
+fn show_dead_player(mut query: Query<(&mut Sprite, &FlashArt, &mut Visibility), With<Player>>) {
+    for (mut sprite, art, mut visibility) in &mut query {
+        // Falls der Tod mitten im Aufblitzen passiert.
+        sprite.image = art.normal.clone();
+        sprite.flip_y = true;
+        sprite.color = Color::srgb(0.75, 0.3, 0.3);
         // Falls der Tod mitten im Blinken passiert.
         *visibility = Visibility::Inherited;
     }

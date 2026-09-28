@@ -170,7 +170,7 @@ pub struct RoomTile {
     pub tile: GridPos,
 }
 
-/// Markiert Tür-Kacheln. Die Richtung braucht es nicht: `door_material`
+/// Markiert Tür-Kacheln. Die Richtung braucht es nicht: `door_image`
 /// erkennt Schlüsseltüren über die Kachelposition (`RoomTile::tile`).
 #[derive(Component)]
 pub struct DoorTile;
@@ -183,13 +183,14 @@ pub struct RoomScoped;
 /// Hilfsfunktion statt System: wird beim Start und bei jedem Raumwechsel
 /// aufgerufen. `&mut Commands` reicht, weil `Commands` Befehle nur sammelt.
 pub fn spawn_room_tiles(commands: &mut Commands, room: &CurrentRoom, assets: &GameAssets) {
+    let art = &assets.tiles;
     for (pos, tile) in room.layout.iter() {
-        let material = match tile {
-            Tile::Floor => &assets.floor,
-            Tile::Wall => &assets.wall,
-            Tile::Rock => &assets.rock,
-            Tile::Pit => &assets.pit,
-            Tile::Door => door_material(room, pos, assets),
+        let image = match tile {
+            Tile::Floor => art.floor_at(room.pos, pos),
+            Tile::Wall => art.wall.clone(),
+            Tile::Rock => art.rock.clone(),
+            Tile::Pit => art.pit.clone(),
+            Tile::Door => door_image(room, pos, assets),
         };
         let mut entity = commands.spawn((
             RoomTile {
@@ -197,8 +198,11 @@ pub fn spawn_room_tiles(commands: &mut Commands, room: &CurrentRoom, assets: &Ga
                 tile: pos,
             },
             DespawnOnExit(AppState::InGame),
-            Mesh2d(assets.tile_mesh.clone()),
-            MeshMaterial2d(material.clone()),
+            Sprite {
+                image,
+                custom_size: Some(Vec2::splat(TILE_SIZE)),
+                ..default()
+            },
             // z = 0: Kacheln liegen unter allem anderen.
             Transform::from_translation(room.tile_center(pos).extend(0.0)),
         ));
@@ -267,29 +271,26 @@ pub fn unlock_when_cleared(
     }
 }
 
-/// Farbe einer Tür: zu (Gegner), Schlüsseltür oder offen.
-fn door_material<'a>(
-    room: &CurrentRoom,
-    pos: GridPos,
-    assets: &'a GameAssets,
-) -> &'a Handle<ColorMaterial> {
+/// Bild einer Tür: zu (Gegner), Schlüsseltür oder offen.
+fn door_image(room: &CurrentRoom, pos: GridPos, assets: &GameAssets) -> Handle<Image> {
+    let art = &assets.tiles;
     if room.locked {
-        &assets.door_closed
+        art.door_closed.clone()
     } else if room.is_key_locked(pos) {
-        &assets.door_keyed
+        art.door_keyed.clone()
     } else {
-        &assets.door_open
+        art.door_open.clone()
     }
 }
 
 fn update_door_visuals(
     room: Res<CurrentRoom>,
     assets: Res<GameAssets>,
-    mut doors: Query<(&RoomTile, &mut MeshMaterial2d<ColorMaterial>), With<DoorTile>>,
+    mut doors: Query<(&RoomTile, &mut Sprite), With<DoorTile>>,
 ) {
-    for (tile, mut mat) in &mut doors {
+    for (tile, mut sprite) in &mut doors {
         if tile.room == room.pos {
-            mat.0 = door_material(&room, tile.tile, &assets).clone();
+            sprite.image = door_image(&room, tile.tile, &assets);
         }
     }
 }

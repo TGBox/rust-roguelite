@@ -14,8 +14,9 @@ use bevy::prelude::*;
 use dungeon_gen::collision::aabb_overlap;
 
 use crate::{
-    assets::GameAssets,
-    enemy::{Asleep, Enemy},
+    assets::ActorArt,
+    enemy::{Asleep, Boss, Enemy},
+    juice::{Fx, FxColor},
     physics::{Body, Position, Velocity},
     player::Player,
     projectile::Projectile,
@@ -79,9 +80,23 @@ pub struct ContactDamage(pub f32);
 #[derive(Component, Debug, Default)]
 pub struct Invulnerable(pub f32);
 
-/// Das normale Material, zu dem nach dem Aufblitzen zurückgewechselt wird.
-#[derive(Component, Debug)]
-pub struct BaseMaterial(pub Handle<ColorMaterial>);
+/// Normales Bild und weiße Silhouette für das Aufblitzen bei Treffern.
+#[derive(Component, Debug, Clone)]
+pub struct FlashArt {
+    pub normal: Handle<Image>,
+    pub flash: Handle<Image>,
+}
+
+/// `From` statt einer `new`-Funktion: Aufrufer schreiben `FlashArt::from(art)`
+/// oder – wo der Typ feststeht – einfach `art.into()`.
+impl From<&ActorArt> for FlashArt {
+    fn from(art: &ActorArt) -> Self {
+        Self {
+            normal: art.image.clone(),
+            flash: art.flash.clone(),
+        }
+    }
+}
 
 #[derive(Component, Debug)]
 struct HitFlash(f32);
@@ -171,21 +186,25 @@ fn contact_damage(
 fn apply_damage(
     mut commands: Commands,
     mut messages: MessageReader<Damage>,
-    assets: Res<GameAssets>,
+    mut fx: MessageWriter<Fx>,
     mut targets: Query<(
         &mut Health,
         &mut Velocity,
         Option<&mut Invulnerable>,
-        &mut MeshMaterial2d<ColorMaterial>,
+        &mut Sprite,
+        &FlashArt,
+        &Position,
+        Option<&FxColor>,
     )>,
 ) {
     for hit in messages.read() {
         // Das Ziel kann im selben Tick schon entfernt worden sein.
-        let Ok((mut health, mut velocity, invulnerable, mut material)) =
+        let Ok((mut health, mut velocity, invulnerable, mut sprite, art, pos, color)) =
             targets.get_mut(hit.target)
         else {
             continue;
         };
+        let is_player = invulnerable.is_some();
         if let Some(mut inv) = invulnerable {
             if inv.0 > 0.0 {
                 continue;
@@ -196,28 +215,76 @@ fn apply_damage(
         }
         health.current = (health.current - hit.amount).max(0.0);
         velocity.0 += hit.knockback;
-        material.0 = assets.flash_material.clone();
+        sprite.image = art.flash.clone();
         commands.entity(hit.target).try_insert(HitFlash(FLASH_SECS));
+
+        // Optik: Spritzer in der Farbe des Ziels; ein Spielertreffer soll
+        // deutlich spürbar sein.
+        let color = color.map_or(Color::WHITE, |c| c.0);
+        if is_player {
+            fx.write(Fx::Shake(0.45));
+            fx.write(Fx::Hitstop(0.08));
+            fx.write(Fx::Burst {
+                at: pos.0,
+                color: Color::srgb(0.9, 0.15, 0.2),
+                count: 10,
+                speed: 120.0,
+            });
+        } else {
+            fx.write(Fx::Burst {
+                at: pos.0,
+                color,
+                count: 4,
+                speed: 70.0,
+            });
+        }
     }
 }
 
 /// `Changed<Health>`: nur Entities, deren Leben sich in diesem Tick geändert hat.
 fn handle_deaths(
     mut commands: Commands,
-    query: Query<(Entity, &Health, Has<Player>), Changed<Health>>,
+    query: Query<
+        (
+            Entity,
+            &Health,
+            &Position,
+            Option<&FxColor>,
+            Has<Player>,
+            Has<Boss>,
+        ),
+        Changed<Health>,
+    >,
     mut next: ResMut<NextState<InGameState>>,
     mut killed: MessageWriter<EnemyKilled>,
+    mut fx: MessageWriter<Fx>,
 ) {
-    for (entity, health, is_player) in &query {
+    for (entity, health, pos, color, is_player, is_boss) in &query {
         if health.current > 0.0 {
             continue;
         }
         if is_player {
+            fx.write(Fx::Shake(0.8));
             next.set(InGameState::Dying);
-        } else {
-            commands.entity(entity).try_despawn();
-            killed.write(EnemyKilled);
+            continue;
         }
+        commands.entity(entity).try_despawn();
+        killed.write(EnemyKilled);
+
+        // Je größer der Gegner, desto mehr Wumms.
+        let (count, shake, stop) = if is_boss {
+            (48, 0.9, 0.3)
+        } else {
+            (14, 0.25, 0.035)
+        };
+        fx.write(Fx::Burst {
+            at: pos.0,
+            color: color.map_or(Color::WHITE, |c| c.0),
+            count,
+            speed: if is_boss { 260.0 } else { 150.0 },
+        });
+        fx.write(Fx::Shake(shake));
+        fx.write(Fx::Hitstop(stop));
     }
 }
 
@@ -232,17 +299,12 @@ fn tick_invulnerability(time: Res<Time>, mut query: Query<&mut Invulnerable>) {
 fn tick_hit_flash(
     mut commands: Commands,
     time: Res<Time>,
-    mut query: Query<(
-        Entity,
-        &mut HitFlash,
-        &BaseMaterial,
-        &mut MeshMaterial2d<ColorMaterial>,
-    )>,
+    mut query: Query<(Entity, &mut HitFlash, &FlashArt, &mut Sprite)>,
 ) {
-    for (entity, mut flash, base, mut material) in &mut query {
+    for (entity, mut flash, art, mut sprite) in &mut query {
         flash.0 -= time.delta_secs();
         if flash.0 <= 0.0 {
-            material.0 = base.0.clone();
+            sprite.image = art.normal.clone();
             commands.entity(entity).remove::<HitFlash>();
         }
     }
