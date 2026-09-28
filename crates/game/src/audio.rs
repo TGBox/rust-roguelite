@@ -112,6 +112,11 @@ fn base_volume(effect: Effect) -> f32 {
         Effect::RoomClear | Effect::Unlock => 0.6,
         Effect::Descend => 0.7,
         Effect::Click => 0.4,
+        Effect::Summon => 0.5,
+        Effect::Secret => 0.7,
+        Effect::PowerUp => 0.7,
+        Effect::Sacrifice => 0.8,
+        Effect::Charged => 0.5,
     }
 }
 

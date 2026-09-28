@@ -64,6 +64,10 @@ fn rebuild_minimap(
     }
 
     for (pos, info) in run.floor.rooms() {
+        // Geheimräume bleiben unsichtbar, bis sie freigesprengt sind.
+        if info.kind == RoomKind::Secret && !run.unlocked.contains(&pos) {
+            continue;
+        }
         let visited = run.visited.contains(&pos);
         let seen = visited || pos.neighbors().any(|(_, n)| run.visited.contains(&n));
         if !seen {
@@ -93,6 +97,9 @@ fn kind_color(kind: RoomKind) -> Color {
         RoomKind::Boss => Color::srgb(0.75, 0.20, 0.20),
         RoomKind::Treasure => Color::srgb(0.90, 0.75, 0.20),
         RoomKind::Shop => Color::srgb(0.30, 0.65, 0.35),
+        RoomKind::Challenge => Color::srgb(0.85, 0.45, 0.15),
+        RoomKind::Sacrifice => Color::srgb(0.55, 0.10, 0.20),
+        RoomKind::Secret => Color::srgb(0.45, 0.35, 0.75),
     }
 }
 

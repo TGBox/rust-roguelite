@@ -30,12 +30,13 @@ use crate::{
     profile,
     progress::place_trapdoor,
     room::{CurrentRoom, RoomCleared},
-    run::Run,
+    run::{ActiveSlot, Run},
     schedule::GameSet,
 };
 
 /// Bei inkompatiblen Änderungen erhöhen – alte Stände werden dann ignoriert.
-pub const SAVE_VERSION: u32 = 1;
+/// Version 2: neue Raumtypen verändern die Etagen – alte Stände passen nicht mehr.
+pub const SAVE_VERSION: u32 = 2;
 
 pub struct SavePlugin;
 
@@ -78,6 +79,10 @@ pub struct RunSave {
     pub keys: u32,
     pub bombs: u32,
     pub items: Vec<ItemId>,
+    #[serde(default)]
+    pub active: Option<ActiveSlot>,
+    #[serde(default)]
+    pub stored_charges: BTreeMap<ItemId, u32>,
     pub pools: ItemPools,
     pub item_rng: Rng,
     pub effect_rng: Rng,
@@ -107,6 +112,8 @@ impl RunSave {
             keys: run.inventory.keys,
             bombs: run.inventory.bombs,
             items: run.inventory.items.clone(),
+            active: run.inventory.active.clone(),
+            stored_charges: run.inventory.stored_charges.clone(),
             pools: run.pools.clone(),
             item_rng: run.item_rng.clone(),
             effect_rng: run.effect_rng.clone(),

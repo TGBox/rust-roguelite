@@ -9,17 +9,19 @@
 //! `Run::layout_overrides` und wird beim nächsten Betreten wiederverwendet.
 
 use bevy::prelude::*;
+use dungeon_gen::{Tile, room::door_pos};
 
 use crate::{
     TILE_SIZE,
     assets::GameAssets,
     audio::{Effect, Sfx},
     combat::{Damage, Health},
+    inventory::Toast,
     juice::Fx,
     physics::Position,
     pixel_art,
     player::{Player, PlayerInput},
-    room::{CurrentRoom, RoomScoped, RoomTile},
+    room::{CurrentRoom, DoorTile, RoomScoped, RoomTile},
     run::Run,
     schedule::GameSet,
     states::AppState,
@@ -96,10 +98,11 @@ fn tick_bombs(
     targets: Query<(Entity, &Position, Has<Player>), With<Health>>,
     mut room: ResMut<CurrentRoom>,
     mut run: ResMut<Run>,
-    mut tiles: Query<(&RoomTile, &mut Sprite), Without<Bomb>>,
+    mut tiles: Query<(Entity, &RoomTile, &mut Sprite), Without<Bomb>>,
     mut damage: MessageWriter<Damage>,
     mut fx: MessageWriter<Fx>,
     mut sfx: MessageWriter<Sfx>,
+    mut toast: ResMut<Toast>,
 ) {
     let dt = time.delta_secs();
     for (entity, transform, mut bomb, mut sprite) in &mut bombs {
@@ -125,6 +128,7 @@ fn tick_bombs(
                 continue;
             }
             damage.write(Damage {
+                status: crate::combat::HitStatus::NONE,
                 target,
                 amount: if is_player {
                     PLAYER_DAMAGE
@@ -141,7 +145,7 @@ fn tick_bombs(
         if !destroyed.is_empty() {
             room.revision += 1;
             run.layout_overrides.insert(room.pos, room.layout.clone());
-            for (room_tile, mut tile_sprite) in &mut tiles {
+            for (_, room_tile, mut tile_sprite) in &mut tiles {
                 if room_tile.room == room.pos && destroyed.contains(&room_tile.tile) {
                     tile_sprite.image = assets.tiles.floor_at(room.pos, room_tile.tile);
                     fx.write(Fx::Burst {
@@ -153,6 +157,29 @@ fn tick_bombs(
                 }
             }
         }
+
+        // 2b. Geheimtür freisprengen, wenn die Explosion nah genug ist.
+        let hidden = room.hidden_secret;
+        if let Some(dir) = hidden {
+            let door = door_pos(dir);
+            if room.tile_center(door).distance(center) <= radius + 0.5 * TILE_SIZE {
+                room.hidden_secret = None;
+                room.layout.set(door, Tile::Door);
+                room.revision += 1;
+                run.unlocked.insert(room.pos.neighbor(dir));
+                run.layout_overrides.insert(room.pos, room.layout.clone());
+                for (tile_entity, room_tile, mut tile_sprite) in &mut tiles {
+                    if room_tile.room == room.pos && room_tile.tile == door {
+                        // Ab jetzt eine normale Tür: `update_door_visuals` kümmert sich.
+                        commands.entity(tile_entity).insert(DoorTile);
+                        tile_sprite.image = assets.tiles.door_open.clone();
+                    }
+                }
+                toast.show("Ein Geheimraum!".to_string());
+                sfx.write(Sfx(Effect::Secret));
+            }
+        }
+
         fx.write(Fx::Burst {
             at: center,
             color: Color::srgb(1.0, 0.6, 0.2),

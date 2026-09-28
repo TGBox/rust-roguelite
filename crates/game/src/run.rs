@@ -12,6 +12,7 @@ use dungeon_gen::{
     loot::{Loot, START_BOMBS, START_KEYS},
     meta::{self, Outcome, RunRecord},
 };
+use serde::{Deserialize, Serialize};
 
 use crate::{
     item_db::ItemDatabase,
@@ -128,8 +129,20 @@ pub struct Inventory {
     pub coins: u32,
     pub keys: u32,
     pub bombs: u32,
-    /// Eingesammelte Items in Reihenfolge des Aufhebens.
+    /// Eingesammelte passive Items in Reihenfolge des Aufhebens.
     pub items: Vec<ItemId>,
+    /// Höchstens ein aktives Item (Taste Q).
+    pub active: Option<ActiveSlot>,
+    /// Ladung abgelegter aktiver Items – hebt man sie wieder auf, geht es dort
+    /// weiter (sonst ließe sich durch Tauschen gratis aufladen).
+    pub stored_charges: BTreeMap<ItemId, u32>,
+}
+
+/// Das aktive Item und seine aktuelle Ladung (geräumte Räume seit der letzten Nutzung).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ActiveSlot {
+    pub id: ItemId,
+    pub charge: u32,
 }
 
 fn start_run(
@@ -162,6 +175,8 @@ fn start_run(
                 keys: s.keys,
                 bombs: s.bombs,
                 items: s.items.clone(),
+                active: s.active.clone(),
+                stored_charges: s.stored_charges.clone(),
             },
             pools: s.pools.clone(),
             loot: s.loot.clone(),
@@ -275,6 +290,14 @@ fn finalize_run(
             .resolve(&run.inventory.items)
             .iter()
             .map(|i| i.name.clone())
+            // Das aktive Item gehört in die Liste – mit Kennzeichnung.
+            .chain(
+                run.inventory
+                    .active
+                    .as_ref()
+                    .and_then(|a| db.0.get(&a.id))
+                    .map(|i| format!("{} (aktiv)", i.name)),
+            )
             .collect(),
         unlocked,
     });

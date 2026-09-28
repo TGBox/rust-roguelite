@@ -29,6 +29,60 @@ pub enum Loot {
         ware: Ware,
         price: u32,
     },
+    /// Opferaltar: Berühren kostet ein Herz und bringt eine Belohnung.
+    /// `uses` = wie oft schon geopfert wurde.
+    Altar {
+        uses: u32,
+    },
+}
+
+/// Wie oft ein Altar genutzt werden kann, bevor er zerfällt.
+pub const ALTAR_USES: u32 = 3;
+/// Kosten eines Opfers in halben Herzen.
+pub const ALTAR_COST: f32 = 2.0;
+
+/// Was ein Opfer einbringt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AltarReward {
+    Coins(u32),
+    Pickup(PickupKind),
+    Item(Pool),
+}
+
+/// Belohnung für das `use_index`-te Opfer (ab 0): Je öfter man opfert,
+/// desto besser – aber jedes Mal kostet es ein Herz.
+pub fn altar_reward(use_index: u32, rng: &mut Rng) -> AltarReward {
+    match use_index {
+        0 => AltarReward::Coins(rng.range(3..=5) as u32),
+        1 if rng.chance(0.5) => AltarReward::Item(Pool::Treasure),
+        1 => AltarReward::Pickup(PickupKind::Key),
+        _ => AltarReward::Item(Pool::Boss),
+    }
+}
+
+/// Inhalt eines Geheimraums: entweder ein Item oder ein Haufen Kleinkram.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SecretStash {
+    pub item: bool,
+    pub pickups: Vec<PickupKind>,
+}
+
+pub fn secret_stash(rng: &mut Rng) -> SecretStash {
+    if rng.chance(0.45) {
+        return SecretStash {
+            item: true,
+            pickups: vec![PickupKind::Coin],
+        };
+    }
+    let mut pickups = vec![PickupKind::Coin; rng.range(3..=5) as usize];
+    pickups.push(PickupKind::Bomb);
+    if rng.chance(0.5) {
+        pickups.push(PickupKind::Key);
+    }
+    SecretStash {
+        item: false,
+        pickups,
+    }
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -114,6 +168,31 @@ mod tests {
         let nothing = counts[&None];
         assert!((3_700..4_300).contains(&nothing), "{counts:?}");
         assert!(counts.contains_key(&Some(PickupKind::Key)));
+    }
+
+    #[test]
+    fn altar_gets_better_with_each_sacrifice() {
+        let mut items = 0;
+        for s in 0..1_000 {
+            let mut rng = Rng::from_seed(s);
+            assert!(matches!(
+                altar_reward(0, &mut rng),
+                AltarReward::Coins(3..=5)
+            ));
+            if matches!(altar_reward(1, &mut rng), AltarReward::Item(_)) {
+                items += 1;
+            }
+            assert_eq!(altar_reward(2, &mut rng), AltarReward::Item(Pool::Boss));
+        }
+        assert!((400..600).contains(&items), "{items}");
+    }
+
+    #[test]
+    fn secret_stash_is_never_empty() {
+        for s in 0..500 {
+            let stash = secret_stash(&mut Rng::from_seed(s));
+            assert!(stash.item || stash.pickups.len() >= 4);
+        }
     }
 
     #[test]

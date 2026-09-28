@@ -1,21 +1,28 @@
 //! Gegner: Werte, Spawnen und KI.
 //!
 //! Jeder Gegnertyp hat eine eigene **Verhaltens-Komponente** (`Chaser`,
-//! `Shooter`, `Charger`, `Boss`) und ein eigenes System. Ein System fragt
+//! `Shooter`, `Charger`, …) und ein eigenes System. Ein System fragt
 //! nur „seine“ Gegner ab – neue Typen kommen hinzu, ohne bestehende zu ändern.
+//!
+//! Aufteilung:
+//! - hier: Komponenten, Werte, Spawnen, einfache Gegner
+//! - `enemy/advanced.rs`: Springer, Teiler, Beschwörer
+//! - `enemy/bosses.rs`: die drei Bosse mit Angriffsphasen
 //!
 //! Alle Gegner bewegen sich über ein gemeinsames **Flowfield** zum Spieler
 //! (siehe `dungeon_gen::pathing`), das nur neu berechnet wird, wenn der
 //! Spieler die Kachel wechselt.
 
-use std::f32::consts::TAU;
-
 use bevy::prelude::*;
 use dungeon_gen::{EnemyKind, GridPos, meta, pathing::FlowField, spawns};
 
+mod advanced;
+pub use bosses::BroodAi;
+mod bosses;
+
 use crate::{
     TILE_SIZE,
-    assets::GameAssets,
+    assets::{ActorArt, GameAssets},
     audio::{Effect, Sfx},
     combat::{ContactDamage, Faction, FlashArt, Health},
     juice::{FxColor, Wobble},
@@ -44,11 +51,26 @@ impl Plugin for EnemyPlugin {
             (
                 update_flow_field,
                 wake_up,
-                (chaser_ai, shooter_ai, charger_ai, boss_ai),
+                (
+                    chaser_ai,
+                    shooter_ai,
+                    charger_ai,
+                    advanced::hopper_ai,
+                    advanced::summoner_ai,
+                    bosses::king_ai,
+                    bosses::brood_ai,
+                    bosses::warden_ai,
+                ),
                 separate_enemies,
             )
                 .chain()
                 .in_set(GameSet::Control),
+        )
+        .add_systems(
+            FixedUpdate,
+            advanced::split_on_death
+                .in_set(GameSet::Cleanup)
+                .before(crate::room::unlock_when_cleared),
         )
         .add_systems(OnExit(AppState::InGame), |mut commands: Commands| {
             commands.remove_resource::<PlayerFlow>();
@@ -118,10 +140,17 @@ enum ChargeState {
     Stunned { remaining: f32 },
 }
 
+/// Markiert alle Bosse (für HUD-Lebensbalken, Frost-Immunität, Effekte).
 #[derive(Component)]
-pub struct Boss {
-    volley_cooldown: f32,
-}
+pub struct Boss;
+
+/// Welcher Typ dieser Gegner ist (für Tod-Effekte wie das Teilen).
+#[derive(Component, Debug, Clone, Copy)]
+pub struct EnemyType(pub EnemyKind);
+
+/// Champion: doppeltes Leben, größer, goldener Schimmer, lässt Beute fallen.
+#[derive(Component)]
+pub struct Champion;
 
 // --- Werte je Typ -------------------------------------------------------------
 
@@ -133,42 +162,147 @@ struct EnemyStats {
 }
 
 fn stats(kind: EnemyKind) -> EnemyStats {
-    let m = |speed, acceleration| Mobility {
-        speed,
-        acceleration,
+    let e = |health, contact_damage, half_tiles, speed, acceleration| EnemyStats {
+        health,
+        contact_damage,
+        half_tiles,
+        mobility: Mobility {
+            speed,
+            acceleration,
+        },
     };
     match kind {
-        EnemyKind::Chaser => EnemyStats {
-            health: 6.0,
-            contact_damage: 1.0,
-            half_tiles: ENEMY_HALF_TILES,
-            mobility: m(2.6, 8.0),
-        },
-        EnemyKind::Shooter => EnemyStats {
-            health: 5.0,
-            contact_damage: 1.0,
-            half_tiles: ENEMY_HALF_TILES,
-            mobility: m(2.0, 6.0),
-        },
-        EnemyKind::Charger => EnemyStats {
-            health: 8.0,
-            contact_damage: 1.0,
-            half_tiles: ENEMY_HALF_TILES,
-            mobility: m(1.4, 6.0),
-        },
-        EnemyKind::Boss => EnemyStats {
-            health: 50.0,
-            contact_damage: 2.0,
-            half_tiles: BOSS_HALF_TILES,
-            mobility: m(1.3, 3.0),
-        },
+        //                        Leben  Kontakt  Hitbox           Tempo  Beschl.
+        EnemyKind::Chaser => e(6.0, 1.0, ENEMY_HALF_TILES, 2.6, 8.0),
+        EnemyKind::Shooter => e(5.0, 1.0, ENEMY_HALF_TILES, 2.0, 6.0),
+        EnemyKind::Charger => e(8.0, 1.0, ENEMY_HALF_TILES, 1.4, 6.0),
+        EnemyKind::Hopper => e(7.0, 1.0, 0.36, 0.0, 10.0),
+        EnemyKind::Splitter => e(10.0, 1.0, 0.45, 1.6, 5.0),
+        EnemyKind::Splitling => e(2.5, 1.0, 0.24, 3.4, 10.0),
+        EnemyKind::Summoner => e(8.0, 1.0, 0.36, 1.8, 6.0),
+        EnemyKind::Boss => e(50.0, 2.0, BOSS_HALF_TILES, 1.3, 3.0),
+        EnemyKind::BroodMother => e(75.0, 2.0, 0.85, 1.1, 3.0),
+        EnemyKind::Warden => e(100.0, 2.0, BOSS_HALF_TILES, 0.8, 2.0),
     }
 }
 
-// --- Spawnen ------------------------------------------------------------------
+/// Grafik und Partikelfarbe je Typ.
+fn look(kind: EnemyKind, assets: &GameAssets) -> (&ActorArt, Color) {
+    let a = &assets.actors;
+    match kind {
+        EnemyKind::Chaser => (&a.chaser, Color::srgb(0.80, 0.25, 0.22)),
+        EnemyKind::Shooter => (&a.shooter, Color::srgb(0.95, 0.60, 0.20)),
+        EnemyKind::Charger => (&a.charger, Color::srgb(0.35, 0.45, 0.90)),
+        EnemyKind::Hopper => (&a.hopper, Color::srgb(0.40, 0.75, 0.30)),
+        EnemyKind::Splitter | EnemyKind::Splitling => (
+            if kind == EnemyKind::Splitter {
+                &a.splitter
+            } else {
+                &a.splitling
+            },
+            Color::srgb(0.65, 0.40, 0.85),
+        ),
+        EnemyKind::Summoner => (&a.summoner, Color::srgb(0.90, 0.85, 0.75)),
+        EnemyKind::Boss => (&a.boss, Color::srgb(0.60, 0.20, 0.55)),
+        EnemyKind::BroodMother => (&a.brood_mother, Color::srgb(0.45, 0.70, 0.30)),
+        EnemyKind::Warden => (&a.warden, Color::srgb(0.55, 0.85, 1.0)),
+    }
+}
 
-/// Spawnt die Gegner für den aktuellen Raum und gibt ihre Anzahl zurück.
-/// Typen und Positionen kommen deterministisch aus `dungeon_gen::spawns`.
+/// Beschreibt einen zu spawnenden Gegner. Struktur statt langer Argumentliste.
+#[derive(Debug, Clone, Copy)]
+pub struct EnemySpawn {
+    pub kind: EnemyKind,
+    /// Weltposition.
+    pub pos: Vec2,
+    pub depth: u32,
+    pub champion: bool,
+    /// Wie lange er nach dem Erscheinen noch stillhält (s).
+    pub asleep: f32,
+}
+
+/// Spawnt einen Gegner – für Raumbelegung, Teilen und Beschwören.
+pub fn spawn_enemy(commands: &mut Commands, spawn: EnemySpawn, assets: &GameAssets) -> Entity {
+    let mut s = stats(spawn.kind);
+    // Tiefere Etagen: zähere und etwas schnellere Gegner.
+    s.health *= meta::enemy_health_multiplier(spawn.depth);
+    s.mobility.speed *= meta::enemy_speed_multiplier(spawn.depth);
+    if spawn.champion {
+        s.health *= 2.0;
+    }
+    let (art, blood) = look(spawn.kind, assets);
+    let size = art.size * if spawn.champion { 1.25 } else { 1.0 };
+
+    let mut entity = commands.spawn((
+        Name::new(format!("{:?}", spawn.kind)),
+        Enemy,
+        EnemyType(spawn.kind),
+        Faction::Enemy,
+        Health::full(s.health),
+        ContactDamage(s.contact_damage),
+        s.mobility,
+        Asleep(spawn.asleep),
+        RoomScoped,
+        DespawnOnExit(AppState::InGame),
+        physics_body(
+            spawn.pos,
+            Vec2::ZERO,
+            Body {
+                half_size: Vec2::splat(s.half_tiles * TILE_SIZE),
+                kind: BodyKind::Walker,
+            },
+            8.0,
+        ),
+        Sprite {
+            image: art.image.clone(),
+            custom_size: Some(size),
+            ..default()
+        },
+        FlashArt::from(art),
+        Wobble::new(size, spawn.pos),
+        FxColor(blood),
+    ));
+    if spawn.champion {
+        entity.insert(Champion);
+    }
+    if spawn.kind.is_boss() {
+        entity.insert(Boss);
+    }
+    // Das Verhalten hängt vom Typ ab: eine Komponente pro Verhalten.
+    // Teiler und Splitlinge verfolgen einfach – ihr Besonderes passiert beim Tod.
+    match spawn.kind {
+        EnemyKind::Chaser | EnemyKind::Splitter | EnemyKind::Splitling => {
+            entity.insert(Chaser);
+        }
+        EnemyKind::Shooter => {
+            entity.insert(Shooter { cooldown: 1.0 });
+        }
+        EnemyKind::Charger => {
+            entity.insert(Charger {
+                state: ChargeState::Stalking,
+            });
+        }
+        EnemyKind::Hopper => {
+            entity.insert(advanced::Hopper::new(spawn.depth));
+        }
+        EnemyKind::Summoner => {
+            entity.insert(advanced::Summoner::default());
+        }
+        EnemyKind::Boss => {
+            entity.insert(bosses::KingAi::default());
+        }
+        EnemyKind::BroodMother => {
+            entity.insert(bosses::BroodAi::default());
+        }
+        EnemyKind::Warden => {
+            entity.insert(bosses::WardenAi::default());
+        }
+    }
+    entity.id()
+}
+
+/// Spawnt die aktuelle Welle (`CurrentRoom::wave`) des Raums und gibt die
+/// Anzahl zurück. Typen und Positionen kommen deterministisch aus `dungeon_gen::spawns`.
 pub fn spawn_room_enemies(
     commands: &mut Commands,
     run: &Run,
@@ -178,63 +312,21 @@ pub fn spawn_room_enemies(
     let Some(info) = run.floor.get(room.pos) else {
         return 0;
     };
-    let mut rng = spawns::spawn_rng(run.seed, run.floor.depth, room.pos);
-    let plan = spawns::plan_spawns(info.kind, &room.layout, &mut rng);
-
-    // Tiefere Etagen: zähere und etwas schnellere Gegner.
     let depth = run.floor.depth;
+    let mut rng = spawns::wave_rng(run.seed, depth, room.pos, room.wave);
+    let plan = spawns::plan_wave(info.kind, &room.layout, depth, room.wave, &mut rng);
     for spawn in &plan {
-        let mut s = stats(spawn.kind);
-        s.health *= meta::enemy_health_multiplier(depth);
-        s.mobility.speed *= meta::enemy_speed_multiplier(depth);
-        let a = &assets.actors;
-        // Grafik und Partikelfarbe je Typ.
-        let (art, blood) = match spawn.kind {
-            EnemyKind::Chaser => (&a.chaser, Color::srgb(0.80, 0.25, 0.22)),
-            EnemyKind::Shooter => (&a.shooter, Color::srgb(0.95, 0.60, 0.20)),
-            EnemyKind::Charger => (&a.charger, Color::srgb(0.35, 0.45, 0.90)),
-            EnemyKind::Boss => (&a.boss, Color::srgb(0.60, 0.20, 0.55)),
-        };
-        let pos = room.tile_center(spawn.pos);
-        let mut entity = commands.spawn((
-            Name::new(format!("{:?}", spawn.kind)),
-            Enemy,
-            Faction::Enemy,
-            Health::full(s.health),
-            ContactDamage(s.contact_damage),
-            s.mobility,
-            Asleep(WAKE_UP_SECS),
-            RoomScoped,
-            DespawnOnExit(AppState::InGame),
-            physics_body(
-                pos,
-                Vec2::ZERO,
-                Body {
-                    half_size: Vec2::splat(s.half_tiles * TILE_SIZE),
-                    kind: BodyKind::Walker,
-                },
-                8.0,
-            ),
-            Sprite {
-                image: art.image.clone(),
-                custom_size: Some(art.size),
-                ..default()
+        spawn_enemy(
+            commands,
+            EnemySpawn {
+                kind: spawn.kind,
+                pos: room.tile_center(spawn.pos),
+                depth,
+                champion: spawn.champion,
+                asleep: WAKE_UP_SECS,
             },
-            FlashArt::from(art),
-            Wobble::new(art.size, pos),
-            FxColor(blood),
-        ));
-        // Das Verhalten hängt vom Typ ab: eine Komponente pro Verhalten.
-        match spawn.kind {
-            EnemyKind::Chaser => entity.insert(Chaser),
-            EnemyKind::Shooter => entity.insert(Shooter { cooldown: 1.0 }),
-            EnemyKind::Charger => entity.insert(Charger {
-                state: ChargeState::Stalking,
-            }),
-            EnemyKind::Boss => entity.insert(Boss {
-                volley_cooldown: 2.0,
-            }),
-        };
+            assets,
+        );
     }
     plan.len()
 }
@@ -298,15 +390,13 @@ fn steer(velocity: &mut Velocity, desired: Vec2, acceleration: f32, dt: f32) {
 fn enemy_shot(from: Vec2, dir: Vec2, speed_tiles: f32, assets: &GameAssets) -> impl Bundle {
     let speed = speed_tiles * TILE_SIZE;
     shot_bundle(
-        Shot {
-            position: from,
-            velocity: dir * speed,
-            lifetime: 9.0 * TILE_SIZE / speed,
-            damage: 1.0,
-            faction: Faction::Enemy,
-            piercing: false,
-            homing: false,
-        },
+        Shot::plain(
+            from,
+            dir * speed,
+            9.0 * TILE_SIZE / speed,
+            1.0,
+            Faction::Enemy,
+        ),
         assets,
     )
 }
@@ -465,45 +555,6 @@ fn charger_ai(
                 }
             }
         };
-    }
-}
-
-/// Verfolgt langsam und feuert regelmäßig einen Ring aus 8 Schüssen.
-fn boss_ai(
-    mut commands: Commands,
-    time: Res<Time>,
-    room: Res<CurrentRoom>,
-    flow: Option<Res<PlayerFlow>>,
-    assets: Res<GameAssets>,
-    player: Single<&Position, With<Player>>,
-    mut query: Query<(&Position, &mut Velocity, &Mobility, &mut Boss), Without<Asleep>>,
-    mut sfx: MessageWriter<Sfx>,
-) {
-    const VOLLEY_DELAY: f32 = 2.8;
-    const VOLLEY_SHOTS: u32 = 8;
-    const SHOT_SPEED: f32 = 4.5;
-
-    let dt = time.delta_secs();
-    for (pos, mut vel, mob, mut boss) in &mut query {
-        let dir = chase_direction(flow.as_deref(), &room, pos.0, player.0);
-        steer(&mut vel, dir * mob.speed * TILE_SIZE, mob.acceleration, dt);
-
-        boss.volley_cooldown -= dt;
-        if boss.volley_cooldown <= 0.0 {
-            boss.volley_cooldown = VOLLEY_DELAY;
-            sfx.write(Sfx(Effect::EnemyShoot));
-            // Ring leicht zum Spieler hin gedreht, damit ein Schuss direkt zielt.
-            let base = (player.0 - pos.0).to_angle();
-            for i in 0..VOLLEY_SHOTS {
-                let angle = base + i as f32 * TAU / VOLLEY_SHOTS as f32;
-                commands.spawn(enemy_shot(
-                    pos.0,
-                    Vec2::from_angle(angle),
-                    SHOT_SPEED,
-                    &assets,
-                ));
-            }
-        }
     }
 }
 

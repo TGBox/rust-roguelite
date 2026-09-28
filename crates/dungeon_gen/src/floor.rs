@@ -6,8 +6,12 @@
 //!    darf nur entstehen, wenn er genau **einen** belegten Nachbarn hat –
 //!    dadurch entsteht ein Baum (keine Schleifen, viele Sackgassen).
 //! 3. Sackgassen werden zu Spezialräumen: Boss = am weitesten entfernte,
-//!    Schatz und Shop = zufällige andere.
-//! 4. Klappt etwas nicht (zu wenige Räume/Sackgassen), neu versuchen – mit
+//!    Schatz und Shop = zufällige andere, dazu mit etwas Glück eine
+//!    Herausforderung und ein Opferraum.
+//! 4. Ein **Geheimraum** hängt versteckt an einem normalen Raum. Er hat genau
+//!    einen Nachbarn – der Baum bleibt also ein Baum. Seine Tür ist im Spiel
+//!    eine rissige Wand, die man freisprengen muss.
+//! 5. Klappt etwas nicht (zu wenige Räume/Sackgassen), neu versuchen – mit
 //!    demselben, weiterlaufenden Generator, also weiterhin deterministisch.
 //!
 //! Alle Sammlungen sind `BTreeMap`/`BTreeSet`: Ihre Iterationsreihenfolge ist
@@ -38,6 +42,25 @@ pub enum RoomKind {
     Boss,
     Treasure,
     Shop,
+    /// Mehrere Gegnerwellen, danach ein Item.
+    Challenge,
+    /// Altar: Leben gegen Belohnungen tauschen.
+    Sacrifice,
+    /// Versteckt – nur per Bombe erreichbar.
+    Secret,
+}
+
+impl RoomKind {
+    pub const ALL: [RoomKind; 8] = [
+        RoomKind::Start,
+        RoomKind::Normal,
+        RoomKind::Boss,
+        RoomKind::Treasure,
+        RoomKind::Shop,
+        RoomKind::Challenge,
+        RoomKind::Sacrifice,
+        RoomKind::Secret,
+    ];
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -89,13 +112,20 @@ impl Floor {
         Some(room.template.layout().with_doors(self.doors(pos)))
     }
 
+    /// Liegt an `pos` in Richtung `dir` der versteckte Geheimraum?
+    pub fn is_secret_door(&self, pos: GridPos, dir: Direction) -> bool {
+        self.get(pos.neighbor(dir))
+            .is_some_and(|r| r.kind == RoomKind::Secret)
+    }
+
     /// Erster Raum dieser Art (Spezialräume gibt es je genau einmal).
     pub fn find(&self, kind: RoomKind) -> Option<GridPos> {
         self.rooms().find(|(_, r)| r.kind == kind).map(|(p, _)| p)
     }
 
     /// Übersichtskarte, oberste Reihe zuerst.
-    /// `S` Start, `B` Boss, `T` Schatz, `$` Shop, `#` normal, `.` leer.
+    /// `S` Start, `B` Boss, `T` Schatz, `$` Shop, `C` Herausforderung,
+    /// `X` Opferraum, `?` Geheimraum, `#` normal, `.` leer.
     pub fn to_ascii(&self) -> String {
         let mut out = String::new();
         for y in (0..FLOOR_SIZE).rev() {
@@ -107,6 +137,9 @@ impl Floor {
                     Some(RoomKind::Boss) => 'B',
                     Some(RoomKind::Treasure) => 'T',
                     Some(RoomKind::Shop) => '$',
+                    Some(RoomKind::Challenge) => 'C',
+                    Some(RoomKind::Sacrifice) => 'X',
+                    Some(RoomKind::Secret) => '?',
                 };
                 out.push(c);
             }
@@ -196,6 +229,10 @@ fn try_generate(rng: &mut Rng, depth: u32, target: usize) -> Option<Floor> {
     }
     rng.shuffle(&mut dead_ends);
     let (treasure, shop) = (dead_ends[0], dead_ends[1]);
+    // Weitere Sackgassen werden mit etwas Glück zu optionalen Spezialräumen.
+    // `get(2)` statt `[2]`: Es gibt nicht immer so viele Sackgassen.
+    let challenge = dead_ends.get(2).copied().filter(|_| rng.chance(0.6));
+    let sacrifice = dead_ends.get(3).copied().filter(|_| rng.chance(0.5));
 
     // --- 4. Räume mit Art und Vorlage befüllen ---
     let rooms = occupied
@@ -206,6 +243,8 @@ fn try_generate(rng: &mut Rng, depth: u32, target: usize) -> Option<Floor> {
                 p if p == boss => RoomKind::Boss,
                 p if p == treasure => RoomKind::Treasure,
                 p if p == shop => RoomKind::Shop,
+                p if Some(p) == challenge => RoomKind::Challenge,
+                p if Some(p) == sacrifice => RoomKind::Sacrifice,
                 _ => RoomKind::Normal,
             };
             let template = rng
@@ -220,7 +259,39 @@ fn try_generate(rng: &mut Rng, depth: u32, target: usize) -> Option<Floor> {
         })
         .collect();
 
-    Some(Floor { depth, rooms })
+    let mut floor = Floor { depth, rooms };
+    place_secret_room(&mut floor, rng);
+    Some(floor)
+}
+
+/// Sucht eine freie Stelle, die an genau einen *normalen* Raum grenzt, und
+/// legt dort den Geheimraum an. Gibt es keine, hat die Etage eben keinen.
+fn place_secret_room(floor: &mut Floor, rng: &mut Rng) {
+    let candidates: Vec<(GridPos, u32)> = (0..FLOOR_SIZE)
+        .flat_map(|y| (0..FLOOR_SIZE).map(move |x| GridPos::new(x, y)))
+        .filter(|&p| floor.get(p).is_none())
+        .filter_map(|p| {
+            let mut neighbors = p.neighbors().filter_map(|(_, n)| floor.get(n));
+            let first = neighbors.next()?;
+            // Genau ein Nachbar, und der ist ein normaler Raum.
+            (neighbors.next().is_none() && first.kind == RoomKind::Normal)
+                .then_some((p, first.distance + 1))
+        })
+        .collect();
+    let Some(&(pos, distance)) = rng.choose(&candidates) else {
+        return;
+    };
+    let template = rng
+        .choose(templates::pool(RoomKind::Secret))
+        .expect("Geheimraum-Vorlage fehlt");
+    floor.rooms.insert(
+        pos,
+        RoomInfo {
+            kind: RoomKind::Secret,
+            distance,
+            template,
+        },
+    );
 }
 
 fn distances_from(occupied: &BTreeSet<GridPos>, start: GridPos) -> BTreeMap<GridPos, u32> {
@@ -281,11 +352,15 @@ mod tests {
         for_many_floors(|seed, floor| {
             let base = (floor.depth * 10 / 3) as usize;
             let expected = (base + 5).min(MAX_ROOMS)..=(base + 6).min(MAX_ROOMS);
+            // Der Geheimraum kommt zusätzlich zur Zielanzahl dazu.
+            let visible = floor
+                .rooms()
+                .filter(|(_, r)| r.kind != RoomKind::Secret)
+                .count();
             assert!(
-                expected.contains(&floor.len()),
-                "Seed {seed}, Tiefe {}: {} Räume",
+                expected.contains(&visible),
+                "Seed {seed}, Tiefe {}: {visible} Räume",
                 floor.depth,
-                floor.len()
             );
         });
     }
@@ -345,12 +420,44 @@ mod tests {
             assert!(boss.distance >= 2, "Seed {seed}: Boss direkt neben Start");
             let farthest_dead_end = floor
                 .rooms()
-                .filter(|(p, r)| r.kind != RoomKind::Start && floor.doors(*p).count() == 1)
+                .filter(|(p, r)| {
+                    !matches!(r.kind, RoomKind::Start | RoomKind::Secret)
+                        && floor.doors(*p).count() == 1
+                })
                 .map(|(_, r)| r.distance)
                 .max()
                 .unwrap();
             assert_eq!(boss.distance, farthest_dead_end, "Seed {seed}");
         });
+    }
+
+    #[test]
+    fn optional_rooms_are_unique_dead_ends() {
+        let mut secrets = 0;
+        let mut challenges = 0;
+        for_many_floors(|seed, floor| {
+            for kind in [RoomKind::Challenge, RoomKind::Sacrifice, RoomKind::Secret] {
+                let rooms: Vec<_> = floor.rooms().filter(|(_, r)| r.kind == kind).collect();
+                assert!(rooms.len() <= 1, "Seed {seed}: {kind:?} mehrfach");
+                for (pos, _) in rooms {
+                    assert_eq!(floor.doors(pos).count(), 1, "Seed {seed}: {kind:?}");
+                }
+            }
+            if let Some(secret) = floor.find(RoomKind::Secret) {
+                secrets += 1;
+                let dir = floor.doors(secret).next().unwrap();
+                let host = floor.get(secret.neighbor(dir)).unwrap();
+                assert_eq!(host.kind, RoomKind::Normal, "Seed {seed}");
+                assert!(floor.is_secret_door(secret.neighbor(dir), dir.opposite()));
+            }
+            if floor.find(RoomKind::Challenge).is_some() {
+                challenges += 1;
+            }
+        });
+        let total = (SEEDS * DEPTHS.len() as u64) as usize;
+        // Fast jede Etage hat einen Geheimraum, Herausforderungen gibt es oft.
+        assert!(secrets > total * 9 / 10, "{secrets}/{total}");
+        assert!(challenges > total / 4, "{challenges}/{total}");
     }
 
     #[test]

@@ -118,6 +118,14 @@ mod tests {
             (SHOT, ENEMY_SHOT_PALETTE),
             (ROCK, ROCK_PALETTE),
             (KEYHOLE, KEYHOLE_PALETTE),
+            (HOPPER, HOPPER_PALETTE),
+            (SPLITTER, SPLITTER_PALETTE),
+            (SPLITLING, SPLITTER_PALETTE),
+            (SUMMONER, SUMMONER_PALETTE),
+            (BROOD_MOTHER, BROOD_MOTHER_PALETTE),
+            (WARDEN, WARDEN_PALETTE),
+            (ALTAR, ALTAR_PALETTE),
+            (ITEM, ACTIVE_ITEM_PALETTE),
         ];
         for (rows, palette) in sprites {
             let (w, h, data) = rgba_from_ascii(rows, palette);

@@ -2,12 +2,18 @@
 //!
 //! Ein Herz = zwei Lebenspunkte (wie bei Isaac): voll, halb oder leer.
 //! Die Symbole sind die Pixel-Grafiken aus `pixel_art.rs`.
+//!
+//! Dazu: aktives Item mit Ladebalken, aktive Synergien und oben in der Mitte
+//! der Lebensbalken des Bosses.
 
 use bevy::prelude::*;
+
+use dungeon_gen::EnemyKind;
 
 use crate::{
     assets::GameAssets,
     combat::Health,
+    enemy::{Boss, EnemyType},
     item_db::ItemDatabase,
     pixel_art,
     player::{Player, PlayerStats},
@@ -33,6 +39,7 @@ impl Plugin for HudPlugin {
                             .or_else(resource_changed::<ItemDatabase>),
                     ),
                     update_stats,
+                    update_boss_bar,
                 )
                     .run_if(in_state(AppState::InGame)),
             );
@@ -58,6 +65,25 @@ struct ItemsText;
 
 #[derive(Component)]
 struct StatsText;
+
+#[derive(Component)]
+struct SynergyText;
+
+/// Zeile mit dem aktiven Item (nur sichtbar, wenn man eines hat).
+#[derive(Component)]
+struct ActiveRow;
+
+#[derive(Component)]
+struct ActiveText;
+
+#[derive(Component)]
+struct BossBar;
+
+#[derive(Component)]
+struct BossBarFill;
+
+#[derive(Component)]
+struct BossName;
 
 fn hud_text(size: f32, color: Color) -> impl Bundle {
     (
@@ -128,10 +154,100 @@ fn spawn_hud(mut commands: Commands, assets: Res<GameAssets>) {
                     ),
                 ]
             ),
+            (
+                ActiveRow,
+                Visibility::Hidden,
+                Node {
+                    align_items: AlignItems::Center,
+                    column_gap: px(6),
+                    ..default()
+                },
+                children![
+                    icon(&s.active_item, pixel_art::ITEM),
+                    (ActiveText, hud_text(16.0, TEXT)),
+                ]
+            ),
             (ItemsText, hud_text(14.0, TEXT_DIM)),
+            (SynergyText, hud_text(14.0, Color::srgb(0.95, 0.80, 0.40))),
             (StatsText, hud_text(14.0, TEXT_DIM)),
         ],
     ));
+
+    // Boss-Lebensbalken: oben in der Mitte, versteckt bis ein Boss auftaucht.
+    commands.spawn((
+        Name::new("BossBar"),
+        BossBar,
+        DespawnOnExit(AppState::InGame),
+        Visibility::Hidden,
+        Node {
+            position_type: PositionType::Absolute,
+            top: px(14),
+            width: percent(100),
+            flex_direction: FlexDirection::Column,
+            align_items: AlignItems::Center,
+            row_gap: px(4),
+            ..default()
+        },
+        children![
+            (BossName, hud_text(16.0, TEXT)),
+            (
+                Node {
+                    width: px(360),
+                    height: px(12),
+                    padding: UiRect::all(px(2)),
+                    ..default()
+                },
+                BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.6)),
+                children![(
+                    BossBarFill,
+                    Node {
+                        width: percent(100),
+                        height: percent(100),
+                        ..default()
+                    },
+                    BackgroundColor(Color::srgb(0.80, 0.15, 0.20)),
+                )],
+            ),
+        ],
+    ));
+}
+
+fn boss_name(kind: EnemyKind) -> &'static str {
+    match kind {
+        EnemyKind::BroodMother => "Brutmutter",
+        EnemyKind::Warden => "Der Wächter",
+        _ => "Klumpenkönig",
+    }
+}
+
+/// Summe aller Boss-Leben (die Brutmutter hat keine Boss-Kinder, aber so
+/// funktioniert es auch für mehrere Bosse).
+fn update_boss_bar(
+    bosses: Query<(&Health, &EnemyType), With<Boss>>,
+    mut bar: Single<&mut Visibility, With<BossBar>>,
+    mut fill: Single<&mut Node, With<BossBarFill>>,
+    mut name: Single<&mut Text, With<BossName>>,
+) {
+    let (current, max) = bosses
+        .iter()
+        .fold((0.0, 0.0), |(c, m), (h, _)| (c + h.current, m + h.max));
+    if max <= 0.0 {
+        bar.set_if_neq(Visibility::Hidden);
+        return;
+    }
+    bar.set_if_neq(Visibility::Inherited);
+    // Nur bei echter Änderung schreiben: Jede Änderung an `Node` löst eine
+    // neue Layout-Berechnung aus.
+    let width = percent(100.0 * current / max);
+    if fill.width != width {
+        fill.width = width;
+    }
+    if let Some((_, kind)) = bosses.iter().next() {
+        let wanted = boss_name(kind.0);
+        if name.0 != wanted {
+            name.0 = wanted.to_string();
+        }
+    }
 }
 
 /// Läuft nur, wenn sich das Leben des Spielers geändert hat
@@ -180,6 +296,17 @@ fn update_counters(
     db: Res<ItemDatabase>,
     mut counters: Query<(&Counter, &mut Text)>,
     mut items: Single<&mut Text, (With<ItemsText>, Without<Counter>)>,
+    mut synergy_text: Single<&mut Text, (With<SynergyText>, Without<ItemsText>, Without<Counter>)>,
+    mut active_text: Single<
+        &mut Text,
+        (
+            With<ActiveText>,
+            Without<SynergyText>,
+            Without<ItemsText>,
+            Without<Counter>,
+        ),
+    >,
+    mut active_row: Single<&mut Visibility, With<ActiveRow>>,
 ) {
     let inv = &run.inventory;
     for (counter, mut text) in &mut counters {
@@ -199,6 +326,44 @@ fn update_counters(
     } else {
         format!("Items: {}", names.join(", "))
     };
+
+    let active_id = inv.active.as_ref().map(|a| &a.id);
+    let synergies = db.0.synergies_for(
+        &inv.items
+            .iter()
+            .chain(active_id)
+            .cloned()
+            .collect::<Vec<_>>(),
+    );
+    synergy_text.0 = if synergies.is_empty() {
+        String::new()
+    } else {
+        let names: Vec<&str> = synergies.iter().map(|s| s.name.as_str()).collect();
+        format!("✦ Synergien: {}", names.join(", "))
+    };
+
+    // Aktives Item: Name plus Ladebalken aus Blöcken, z. B. „■■□ (Q)“.
+    let active = inv
+        .active
+        .as_ref()
+        .and_then(|slot| db.0.get(&slot.id).map(|item| (slot, item)))
+        .and_then(|(slot, item)| item.active().map(|(_, max)| (slot, item, max)));
+    match active {
+        Some((slot, item, max)) => {
+            active_row.set_if_neq(Visibility::Inherited);
+            let filled = slot.charge.min(max) as usize;
+            let bar = "■".repeat(filled) + &"□".repeat(max as usize - filled);
+            let hint = if slot.charge >= max {
+                "  bereit (Q)"
+            } else {
+                ""
+            };
+            active_text.0 = format!("{}  {bar}{hint}", item.name);
+        }
+        None => {
+            active_row.set_if_neq(Visibility::Hidden);
+        }
+    }
 }
 
 fn update_stats(
@@ -217,6 +382,18 @@ fn update_stats(
     }
     if pattern.homing {
         extras.push("zielsuchend".to_string());
+    }
+    if pattern.bounces > 0 {
+        extras.push(format!("{}× Abpraller", pattern.bounces));
+    }
+    if let Some(p) = pattern.poison {
+        extras.push(format!("Gift {:.0} %", p.chance * 100.0));
+    }
+    if let Some(f) = pattern.freeze {
+        extras.push(format!("Frost {:.0} %", f.chance * 100.0));
+    }
+    if let Some(c) = pattern.crit {
+        extras.push(format!("Krit {:.0} %", c.chance * 100.0));
     }
     let extras = if extras.is_empty() {
         String::new()

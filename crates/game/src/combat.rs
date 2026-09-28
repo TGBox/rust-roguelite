@@ -9,14 +9,18 @@
 //!
 //! Die Trennung von Erkennen und Anwenden hält beide Seiten einfach: Neue
 //! Schadensquellen (Explosionen, Stacheln, Items) schreiben nur Messages.
+//!
+//! Statuseffekte: Ein Treffer kann **Gift** (`Poisoned`, Schaden über Zeit)
+//! oder **Frost** (`Frozen` + `Asleep`, keine KI) auslösen. Bosse sind gegen
+//! Frost immun – sonst ließe sich jeder Boss einfach festfrieren.
 
 use bevy::prelude::*;
-use dungeon_gen::collision::aabb_overlap;
+use dungeon_gen::{EnemyKind, collision::aabb_overlap};
 
 use crate::{
     assets::ActorArt,
     audio::{Effect, Sfx},
-    enemy::{Asleep, Boss, Enemy},
+    enemy::{Asleep, Boss, Champion, Enemy, EnemyType},
     juice::{Fx, FxColor},
     physics::{Body, Position, Velocity},
     player::Player,
@@ -44,6 +48,7 @@ impl Plugin for CombatPlugin {
                 (
                     (projectile_hits, contact_damage),
                     apply_damage,
+                    (tick_poison, tick_frozen),
                     handle_deaths,
                     tick_invulnerability,
                 )
@@ -102,9 +107,41 @@ impl From<&ActorArt> for FlashArt {
 #[derive(Component, Debug)]
 struct HitFlash(f32);
 
-/// Ein Gegner ist gestorben (für Item-Effekte wie „Münze pro Kill“).
+/// Ein Gegner ist gestorben (für Item-Effekte, Teilen, Champion-Beute).
 #[derive(Message, Debug, Clone, Copy)]
-pub struct EnemyKilled;
+pub struct EnemyKilled {
+    pub pos: Vec2,
+    pub kind: EnemyKind,
+    pub champion: bool,
+}
+
+/// Was ein Treffer zusätzlich zum Schaden auslöst.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct HitStatus {
+    /// (Schaden pro Sekunde, Dauer)
+    pub poison: Option<(f32, f32)>,
+    /// Dauer des Einfrierens.
+    pub freeze: Option<f32>,
+}
+
+impl HitStatus {
+    pub const NONE: Self = Self {
+        poison: None,
+        freeze: None,
+    };
+}
+
+/// Vergiftet: verliert Leben pro Sekunde.
+#[derive(Component, Debug)]
+pub struct Poisoned {
+    pub damage_per_sec: f32,
+    pub remaining: f32,
+}
+
+/// Eingefroren (zusätzlich zu `Asleep`, das die KI anhält). Nur für Optik
+/// und damit das Auftauen `Asleep` wieder entfernt.
+#[derive(Component, Debug)]
+pub struct Frozen(pub f32);
 
 #[derive(Message, Debug, Clone, Copy)]
 pub struct Damage {
@@ -112,6 +149,7 @@ pub struct Damage {
     pub amount: f32,
     /// Stoß in Pixel/s, wird auf die Geschwindigkeit addiert.
     pub knockback: Vec2,
+    pub status: HitStatus,
 }
 
 fn projectile_hits(
@@ -139,6 +177,7 @@ fn projectile_hits(
                     target,
                     amount: projectile.damage,
                     knockback: shot_vel.0.normalize_or_zero() * SHOT_KNOCKBACK,
+                    status: projectile.status,
                 });
                 if projectile.piercing {
                     // Durchschlagend: weiterfliegen, dieses Ziel aber nie wieder treffen.
@@ -177,6 +216,7 @@ fn contact_damage(
                 target: player,
                 amount: contact.0,
                 knockback: (player_pos.0 - pos.0).normalize_or_zero() * CONTACT_KNOCKBACK,
+                status: HitStatus::NONE,
             });
             // Pro Tick höchstens ein Kontakttreffer – danach ist der Spieler unverwundbar.
             break;
@@ -197,15 +237,33 @@ fn apply_damage(
         &FlashArt,
         &Position,
         Option<&FxColor>,
+        Has<Boss>,
     )>,
 ) {
     for hit in messages.read() {
         // Das Ziel kann im selben Tick schon entfernt worden sein.
-        let Ok((mut health, mut velocity, invulnerable, mut sprite, art, pos, color)) =
+        let Ok((mut health, mut velocity, invulnerable, mut sprite, art, pos, color, is_boss)) =
             targets.get_mut(hit.target)
         else {
             continue;
         };
+        // Statuseffekte nur für Gegner. `try_insert`: Stirbt das Ziel im selben
+        // Tick, wäre ein normales `insert` auf eine entfernte Entity ein Fehler.
+        if invulnerable.is_none() {
+            if let Some((damage_per_sec, secs)) = hit.status.poison {
+                commands.entity(hit.target).try_insert(Poisoned {
+                    damage_per_sec,
+                    remaining: secs,
+                });
+            }
+            if let Some(secs) = hit.status.freeze
+                && !is_boss
+            {
+                commands
+                    .entity(hit.target)
+                    .try_insert((Frozen(secs), Asleep(secs)));
+            }
+        }
         let is_player = invulnerable.is_some();
         if let Some(mut inv) = invulnerable {
             if inv.0 > 0.0 {
@@ -254,8 +312,10 @@ fn handle_deaths(
             &Health,
             &Position,
             Option<&FxColor>,
+            Option<&EnemyType>,
             Has<Player>,
             Has<Boss>,
+            Has<Champion>,
         ),
         Changed<Health>,
     >,
@@ -264,7 +324,7 @@ fn handle_deaths(
     mut fx: MessageWriter<Fx>,
     mut sfx: MessageWriter<Sfx>,
 ) {
-    for (entity, health, pos, color, is_player, is_boss) in &query {
+    for (entity, health, pos, color, kind, is_player, is_boss, champion) in &query {
         if health.current > 0.0 {
             continue;
         }
@@ -274,7 +334,11 @@ fn handle_deaths(
             continue;
         }
         commands.entity(entity).try_despawn();
-        killed.write(EnemyKilled);
+        killed.write(EnemyKilled {
+            pos: pos.0,
+            kind: kind.map_or(EnemyKind::Chaser, |k| k.0),
+            champion,
+        });
 
         // Je größer der Gegner, desto mehr Wumms.
         let (count, shake, stop) = if is_boss {
@@ -295,6 +359,35 @@ fn handle_deaths(
         } else {
             Effect::EnemyDeath
         }));
+    }
+}
+
+/// Gift: Leben direkt abziehen (ohne `Damage`-Message – sonst gäbe es jeden
+/// Tick Rückstoß, Aufblitzen und Treffer-Sound).
+fn tick_poison(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut query: Query<(Entity, &mut Poisoned, &mut Health)>,
+) {
+    let dt = time.delta_secs();
+    for (entity, mut poison, mut health) in &mut query {
+        if health.current > 0.0 {
+            health.current = (health.current - poison.damage_per_sec * dt).max(0.0);
+        }
+        poison.remaining -= dt;
+        if poison.remaining <= 0.0 {
+            commands.entity(entity).remove::<Poisoned>();
+        }
+    }
+}
+
+/// Auftauen. `Asleep` läuft parallel ab und wird von `enemy::wake_up` entfernt.
+fn tick_frozen(mut commands: Commands, time: Res<Time>, mut query: Query<(Entity, &mut Frozen)>) {
+    for (entity, mut frozen) in &mut query {
+        frozen.0 -= time.delta_secs();
+        if frozen.0 <= 0.0 {
+            commands.entity(entity).remove::<Frozen>();
+        }
     }
 }
 

@@ -13,7 +13,8 @@ use crate::{
     TILE_SIZE,
     assets::GameAssets,
     camera::MainCamera,
-    enemy::{Asleep, Charger, Enemy},
+    combat::{Frozen, Poisoned},
+    enemy::{Asleep, BroodAi, Champion, Charger, Enemy},
     physics::{Position, Velocity},
     pixel_art::canvas::noise,
     player::{Player, PlayerInput},
@@ -339,15 +340,43 @@ fn face_direction(
 
 /// Einfärben nach Zustand: schlafend halb durchsichtig, Charger beim Ausholen
 /// rot pulsierend und geduckt, benommen grau.
+///
+/// Reihenfolge = Priorität: Frost > Gift > Champion-Gold; Ausholen überschreibt alles.
 fn tint_enemies(
     time: Res<Time>,
-    mut query: Query<(&mut Sprite, Has<Asleep>, Option<&Charger>), With<Enemy>>,
+    mut query: Query<
+        (
+            &mut Sprite,
+            Has<Asleep>,
+            Has<Frozen>,
+            Has<Poisoned>,
+            Has<Champion>,
+            Option<&Charger>,
+            Option<&BroodAi>,
+        ),
+        With<Enemy>,
+    >,
 ) {
     let t = time.elapsed_secs();
-    for (mut sprite, asleep, charger) in &mut query {
-        let mut color = Color::WHITE;
-        if asleep {
+    for (mut sprite, asleep, frozen, poisoned, champion, charger, brood) in &mut query {
+        let mut color = if frozen {
+            Color::srgb(0.55, 0.85, 1.0)
+        } else if poisoned {
+            // Leichtes Pulsieren, damit man den Schaden über Zeit „sieht“.
+            let pulse = 0.5 + 0.5 * (t * 8.0).sin();
+            Color::srgb(0.6 + 0.2 * pulse, 1.0, 0.5)
+        } else if champion {
+            Color::srgb(1.0, 0.85, 0.45)
+        } else {
+            Color::WHITE
+        };
+        // Beim Einschlafen nach dem Betreten halb durchsichtig – eingefroren nicht.
+        if asleep && !frozen {
             color = color.with_alpha(0.55);
+        }
+        if brood.is_some_and(|b| b.is_winding_up()) {
+            let pulse = 0.5 + 0.5 * (t * 30.0).sin();
+            color = Color::srgb(1.0, 1.0 - 0.6 * pulse, 1.0 - 0.6 * pulse);
         }
         if let Some(charger) = charger {
             if let Some(progress) = charger.windup_progress() {

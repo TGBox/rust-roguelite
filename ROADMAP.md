@@ -166,6 +166,19 @@ Jeder Meilenstein endet mit etwas **Spielbarem oder Testbarem**. „DoD“ = Def
   Musikschleife als WAV im Speicher; `Sfx`-Messages, Wiederholsperre, Tonhöhen-Variation,
   Musik pausiert im Pausemenü, **M** schaltet stumm.
 
+### M8c – Spieltiefe (umgesetzt, Test ausstehend)
+- **Gegner:** Springer (Sätze, ab Etage 2 Kreuzschüsse), Teiler (zerfällt in Splitlinge),
+  Beschwörer (ruft Splitlinge). Gegnermix je Etage, **Champions** (doppeltes Leben, Gold-Schimmer, Beute).
+- **Bosse je Etage** mit zwei Phasen (< 50 % Leben): Klumpenkönig, Brutmutter (Nachwuchs + Sturmangriff),
+  Wächter (Spiralen + gezielte Fächer). Boss-Lebensbalken im HUD.
+- **Aktive Items** (Taste Q, Ladung pro geräumtem Raum): Heilsalbe, Donnertrommel, Frosthorn, Ägide,
+  Goldbeutel. Tauschen legt das alte Item ab (Ladung bleibt erhalten).
+- **Neue Effekte:** Gift, Frost, Abpraller, Krit, „pro Item“. 10 neue passive Items, 7 **Synergien**
+  (in `items.ron`, Format-Version 2 – alte Dateien werden gesichert und ersetzt).
+- **Raumtypen:** Herausforderung (3 Wellen → Item + Herz), Opferraum (Altar: Herz gegen steigende
+  Belohnung, 3×), Geheimraum (rissige Wand freisprengen, Item oder Vorrat).
+- Spielstand-Version 2 (alte Stände werden ignoriert).
+
 ### M9 – Polish & Release
 - Einstellungen (Lautstärke, Tastenbelegung) über Bevys `SettingsPlugin`.
 - Release-Profil (LTO), Windows-Build, optional WASM.

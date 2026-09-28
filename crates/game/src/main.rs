@@ -3,6 +3,8 @@
 
 use bevy::prelude::*;
 
+mod active;
+mod altar;
 mod assets;
 mod audio;
 mod bomb;
@@ -72,6 +74,8 @@ fn main() {
             profile::ProfilePlugin,
             item_db::ItemDbPlugin,
             juice::JuicePlugin,
+            active::ActivePlugin,
+            altar::AltarPlugin,
             audio::GameAudioPlugin,
             save::SavePlugin,
             ui::UiPlugin,

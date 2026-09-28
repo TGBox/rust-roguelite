@@ -162,7 +162,7 @@ fn animate_transition(
     }
     // Beute festlegen (nur beim ersten Besuch) und alles Liegende spawnen.
     inventory::prepare_room_loot(&mut run, &room, &db.0);
-    inventory::spawn_room_loot(&mut commands, &run, &room, &assets);
+    inventory::spawn_room_loot(&mut commands, &run, &room, &assets, &db.0);
     progress::spawn_trapdoor(&mut commands, &run, &room, &assets);
 
     commands.remove_resource::<Pan>();

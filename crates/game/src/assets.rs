@@ -49,6 +49,9 @@ pub struct Sprites {
     pub exit: Handle<Image>,
     /// 1 × 1 weiß – für Partikel, per `Sprite::color` eingefärbt.
     pub pixel: Handle<Image>,
+    /// Aktives Item (oranger Edelstein) – auf dem Sockel und im HUD.
+    pub active_item: Handle<Image>,
+    pub altar: Handle<Image>,
 }
 
 /// Kachel-Texturen (prozedural, siehe `pixel_art::tiles`).
@@ -56,6 +59,8 @@ pub struct TileArt {
     /// Mehrere Bodenvarianten, damit der Boden nicht wie ein Raster aussieht.
     pub floors: Vec<Handle<Image>>,
     pub wall: Handle<Image>,
+    /// Versteckter Durchgang zu einem Geheimraum.
+    pub wall_cracked: Handle<Image>,
     pub rock: Handle<Image>,
     pub pit: Handle<Image>,
     pub door_open: Handle<Image>,
@@ -88,6 +93,12 @@ pub struct ActorSprites {
     pub shooter: ActorArt,
     pub charger: ActorArt,
     pub boss: ActorArt,
+    pub hopper: ActorArt,
+    pub splitter: ActorArt,
+    pub splitling: ActorArt,
+    pub summoner: ActorArt,
+    pub brood_mother: ActorArt,
+    pub warden: ActorArt,
     pub tear: ActorArt,
     pub enemy_shot: ActorArt,
 }
@@ -131,6 +142,8 @@ impl FromWorld for GameAssets {
             trapdoor: images.add(image_from_ascii(TRAPDOOR, TRAPDOOR_PALETTE)),
             exit: images.add(image_from_ascii(TRAPDOOR, EXIT_PALETTE)),
             pixel: images.add(white_pixel()),
+            active_item: images.add(image_from_ascii(ITEM, ACTIVE_ITEM_PALETTE)),
+            altar: images.add(image_from_ascii(ALTAR, ALTAR_PALETTE)),
         };
 
         let tiles = TileArt {
@@ -138,6 +151,7 @@ impl FromWorld for GameAssets {
                 .map(|v| images.add(image_from_canvas(tiles::floor(v))))
                 .collect(),
             wall: images.add(image_from_canvas(tiles::wall())),
+            wall_cracked: images.add(image_from_canvas(tiles::wall_cracked())),
             rock: images.add(image_from_canvas(tiles::rock())),
             pit: images.add(image_from_canvas(tiles::pit())),
             door_open: images.add(image_from_canvas(tiles::door_open())),
@@ -152,6 +166,12 @@ impl FromWorld for GameAssets {
             charger: actor(images, CHARGER, CHARGER_PALETTE, 2.2),
             // 20 Bildpixel × 2,7 ≈ 54 Weltpixel – passend zur Boss-Hitbox (≈ 51).
             boss: actor(images, BOSS, BOSS_PALETTE, 2.7),
+            hopper: actor(images, HOPPER, HOPPER_PALETTE, 2.2),
+            splitter: actor(images, SPLITTER, SPLITTER_PALETTE, 2.4),
+            splitling: actor(images, SPLITLING, SPLITTER_PALETTE, 2.0),
+            summoner: actor(images, SUMMONER, SUMMONER_PALETTE, 2.2),
+            brood_mother: actor(images, BROOD_MOTHER, BROOD_MOTHER_PALETTE, 2.8),
+            warden: actor(images, WARDEN, WARDEN_PALETTE, 2.7),
             tear: actor(images, SHOT, TEAR_PALETTE, 2.0),
             enemy_shot: actor(images, SHOT, ENEMY_SHOT_PALETTE, 2.0),
         };

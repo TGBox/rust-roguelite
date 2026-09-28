@@ -66,13 +66,17 @@ pub struct CurrentRoom {
     /// Zählt Änderungen am Layout (z. B. gesprengte Felsen), damit abgeleitete
     /// Daten wie das Flowfield wissen, dass sie neu berechnet werden müssen.
     pub revision: u32,
+    /// Aktuelle Gegnerwelle (ab 0). Nur Herausforderungsräume haben mehrere.
+    pub wave: u32,
+    /// Richtung der noch versteckten Tür zum Geheimraum (rissige Wand).
+    pub hidden_secret: Option<Direction>,
 }
 
 impl CurrentRoom {
     /// Raum `pos` betreten: Layout (inkl. gesprengter Felsen) und Schlüsseltüren
     /// aus dem Run übernehmen.
     pub fn enter(run: &Run, pos: GridPos) -> Self {
-        let layout = run
+        let mut layout = run
             .layout_overrides
             .get(&pos)
             .cloned()
@@ -90,13 +94,37 @@ impl CurrentRoom {
                 needs_key && !run.unlocked.contains(&neighbor)
             })
             .collect();
+
+        // Geheimraum: Solange er nicht entdeckt ist (`Run::unlocked`), ist
+        // seine Tür eine Wand. Immer neu setzen – ein gespeichertes Layout
+        // (gesprengte Felsen) könnte noch den alten Zustand enthalten.
+        let mut hidden_secret = None;
+        for dir in run.floor.doors(pos) {
+            if run.floor.is_secret_door(pos, dir) {
+                let revealed = run.unlocked.contains(&pos.neighbor(dir));
+                layout.set(
+                    door_pos(dir),
+                    if revealed { Tile::Door } else { Tile::Wall },
+                );
+                if !revealed {
+                    hidden_secret = Some(dir);
+                }
+            }
+        }
         Self {
             pos,
             layout,
             locked: false,
             key_locked,
             revision: 0,
+            wave: 0,
+            hidden_secret,
         }
+    }
+
+    /// Kachel der versteckten Geheimtür, falls es eine gibt.
+    pub fn hidden_secret_tile(&self) -> Option<GridPos> {
+        self.hidden_secret.map(door_pos)
     }
 
     /// Ist diese Kachel eine Tür, die einen Schlüssel braucht?
@@ -188,6 +216,8 @@ pub fn spawn_room_tiles(commands: &mut Commands, room: &CurrentRoom, assets: &Ga
     for (pos, tile) in room.layout.iter() {
         let image = match tile {
             Tile::Floor => art.floor_at(room.pos, pos),
+            // Rissige Wand verrät den Geheimraum – für aufmerksame Spieler.
+            Tile::Wall if room.hidden_secret_tile() == Some(pos) => art.wall_cracked.clone(),
             Tile::Wall => art.wall.clone(),
             Tile::Rock => art.rock.clone(),
             Tile::Pit => art.pit.clone(),
@@ -213,7 +243,6 @@ pub fn spawn_room_tiles(commands: &mut Commands, room: &CurrentRoom, assets: &Ga
     }
 }
 
-/// Erster Raum eines Runs. Läuft in der Kette aus `run.rs` nach `start_run`.
 /// Erster Raum eines Runs – der Startraum oder beim Fortsetzen der gespeicherte Raum.
 /// Läuft in der Kette aus `run.rs` nach `start_run`.
 pub fn enter_first_room(
@@ -240,7 +269,7 @@ pub fn enter_first_room(
         }
     }
     inventory::prepare_room_loot(&mut run, &room, &db.0);
-    inventory::spawn_room_loot(&mut commands, &run, &room, &assets);
+    inventory::spawn_room_loot(&mut commands, &run, &room, &assets, &db.0);
     progress::spawn_trapdoor(&mut commands, &run, &room, &assets);
 
     commands.insert_resource(room);
@@ -256,15 +285,29 @@ pub struct RoomCleared {
     pub room: GridPos,
 }
 
-/// Kein Gegner mehr da? Türen öffnen und Raum als geräumt merken.
+/// Kein Gegner mehr da? Nächste Welle schicken – oder Türen öffnen und den
+/// Raum als geräumt merken.
 pub fn unlock_when_cleared(
+    mut commands: Commands,
     mut room: ResMut<CurrentRoom>,
     mut run: ResMut<Run>,
+    assets: Res<GameAssets>,
     enemies: Query<(), With<Enemy>>,
     mut cleared: MessageWriter<RoomCleared>,
+    mut toast: ResMut<Toast>,
 ) {
     // Nur lesen löst keine Change Detection aus – erst das Schreiben unten.
     if room.locked && enemies.is_empty() {
+        let kind = run.floor.get(room.pos).map(|r| r.kind);
+        let total = kind.map_or(1, dungeon_gen::spawns::waves);
+        if room.wave + 1 < total {
+            room.wave += 1;
+            let wave = room.wave;
+            toast.show(format!("Welle {} von {total}", wave + 1));
+            // Leere Welle (sollte nicht vorkommen) → beim nächsten Tick weiter.
+            spawn_room_enemies(&mut commands, &run, &room, &assets);
+            return;
+        }
         room.locked = false;
         run.cleared.insert(room.pos);
         cleared.write(RoomCleared { room: room.pos });
@@ -345,6 +388,8 @@ mod tests {
             locked: false,
             key_locked: Vec::new(),
             revision: 0,
+            wave: 0,
+            hidden_secret: None,
         }
     }
 

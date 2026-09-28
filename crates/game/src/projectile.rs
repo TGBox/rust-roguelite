@@ -7,7 +7,7 @@ use bevy::prelude::*;
 use crate::{
     TILE_SIZE,
     assets::GameAssets,
-    combat::{Faction, Health},
+    combat::{Faction, Health, HitStatus},
     juice::Fx,
     physics::{Body, BodyKind, Position, TileHit, Velocity, physics_body},
     room::RoomScoped,
@@ -42,6 +42,10 @@ pub struct Projectile {
     pub homing: bool,
     /// Bei durchschlagenden Schüssen: schon getroffene Ziele.
     pub already_hit: Vec<Entity>,
+    /// Verbleibende Abpraller an Wänden.
+    pub bounces: u32,
+    /// Gift/Frost, die dieser Schuss beim Treffer auslöst.
+    pub status: HitStatus,
 }
 
 /// Alle Parameter eines Schusses. Eine Struktur statt sechs Funktionsargumenten:
@@ -55,6 +59,48 @@ pub struct Shot {
     pub faction: Faction,
     pub piercing: bool,
     pub homing: bool,
+    pub bounces: u32,
+    pub status: HitStatus,
+    /// Kritischer Treffer (nur Optik – der Schaden ist schon eingerechnet).
+    pub crit: bool,
+}
+
+impl Shot {
+    /// Ein schlichter Schuss ohne Extras (Gegner).
+    pub fn plain(
+        position: Vec2,
+        velocity: Vec2,
+        lifetime: f32,
+        damage: f32,
+        faction: Faction,
+    ) -> Self {
+        Self {
+            position,
+            velocity,
+            lifetime,
+            damage,
+            faction,
+            piercing: false,
+            homing: false,
+            bounces: 0,
+            status: HitStatus::NONE,
+            crit: false,
+        }
+    }
+}
+
+/// Farbe und Größe verraten, was ein Schuss kann.
+fn shot_look(shot: &Shot) -> (Color, f32) {
+    let color = if shot.status.poison.is_some() {
+        Color::srgb(0.55, 1.0, 0.45)
+    } else if shot.status.freeze.is_some() {
+        Color::srgb(0.75, 1.0, 1.0)
+    } else if shot.crit {
+        Color::srgb(1.0, 0.9, 0.45)
+    } else {
+        Color::WHITE
+    };
+    (color, if shot.crit { 1.5 } else { 1.0 })
 }
 
 pub fn shot_bundle(shot: Shot, assets: &GameAssets) -> impl Bundle {
@@ -62,6 +108,7 @@ pub fn shot_bundle(shot: Shot, assets: &GameAssets) -> impl Bundle {
         Faction::Player => &assets.actors.tear,
         Faction::Enemy => &assets.actors.enemy_shot,
     };
+    let (color, scale) = shot_look(&shot);
     (
         Name::new("Shot"),
         DespawnOnExit(AppState::InGame),
@@ -73,6 +120,8 @@ pub fn shot_bundle(shot: Shot, assets: &GameAssets) -> impl Bundle {
             piercing: shot.piercing,
             homing: shot.homing,
             already_hit: Vec::new(),
+            bounces: shot.bounces,
+            status: shot.status,
         },
         physics_body(
             shot.position,
@@ -85,7 +134,8 @@ pub fn shot_bundle(shot: Shot, assets: &GameAssets) -> impl Bundle {
         ),
         Sprite {
             image: art.image.clone(),
-            custom_size: Some(art.size),
+            custom_size: Some(art.size * scale),
+            color,
             ..default()
         },
     )
@@ -110,14 +160,30 @@ fn tick_lifetime(
 fn despawn_on_tile_hit(
     mut commands: Commands,
     mut hits: MessageReader<TileHit>,
-    projectiles: Query<(&Position, &Projectile)>,
+    mut projectiles: Query<(&Position, &mut Projectile, &mut Velocity)>,
     mut fx: MessageWriter<Fx>,
 ) {
     for hit in hits.read() {
         // Der Physik-Code meldet Treffer für ALLE Körper. Hier interessieren nur Projektile.
-        let Ok((pos, projectile)) = projectiles.get(hit.entity) else {
+        let Ok((pos, mut projectile, mut velocity)) = projectiles.get_mut(hit.entity) else {
             continue;
         };
+        if projectile.bounces > 0 {
+            // Abprallen: die getroffene Achse spiegeln. Die Physik hat sie auf
+            // 0 gesetzt – deshalb rechnen wir mit der Geschwindigkeit davor.
+            projectile.bounces -= 1;
+            let mut v = hit.velocity;
+            if hit.hit_x {
+                v.x = -v.x;
+            }
+            if hit.hit_y {
+                v.y = -v.y;
+            }
+            velocity.0 = v;
+            // Nach dem Abprallen darf ein durchschlagender Schuss dasselbe Ziel erneut treffen.
+            projectile.already_hit.clear();
+            continue;
+        }
         commands.entity(hit.entity).try_despawn();
         // Kleiner Spritzer an der Wand.
         fx.write(Fx::Burst {

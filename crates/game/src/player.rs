@@ -5,7 +5,7 @@
 
 use bevy::prelude::*;
 use dungeon_gen::{
-    items::{ShotPattern, compute_stats, shot_pattern},
+    items::{Loadout, ShotPattern, compute_stats, roll_shot, shot_pattern},
     room::CENTER,
     stats::Stats,
 };
@@ -14,7 +14,7 @@ use crate::{
     TILE_SIZE,
     assets::GameAssets,
     audio::{Effect, Sfx},
-    combat::{Faction, FlashArt, Health, Invulnerable},
+    combat::{Faction, FlashArt, Health, HitStatus, Invulnerable},
     item_db::ItemDatabase,
     juice::Wobble,
     physics::{Body, BodyKind, Position, Velocity, physics_body},
@@ -80,7 +80,7 @@ impl Default for PlayerStats {
     fn default() -> Self {
         Self {
             stats: Stats::BASE,
-            pattern: shot_pattern(&[]),
+            pattern: shot_pattern(&Loadout::default()),
         }
     }
 }
@@ -100,6 +100,8 @@ pub struct PlayerInput {
     /// Ein kurzer Tastendruck kann in ein Bild ohne festen Tick fallen – ohne
     /// dieses „Einrasten“ ginge er verloren.
     pub place_bomb: bool,
+    /// Aktives Item benutzen (Taste Q), eingerastet wie `place_bomb`.
+    pub use_active: bool,
 }
 
 /// Läuft in der Kette aus `run.rs`, nachdem der erste Raum existiert.
@@ -154,12 +156,13 @@ fn refresh_player_stats(
     mut query: Query<(&mut PlayerStats, &Health), With<Player>>,
 ) {
     let inv = &run.inventory;
-    let items = db.0.resolve(&inv.items);
+    // Passive Items + Synergien. Das aktive Item zählt nur für Synergien.
+    let loadout = db.0.loadout(&inv.items, inv.active.as_ref().map(|a| &a.id));
     for (mut stats, health) in &mut query {
         let missing = (health.max - health.current).max(0.0) as u32;
         stats.set_if_neq(PlayerStats {
-            stats: compute_stats(&items, inv.coins, missing),
-            pattern: shot_pattern(&items),
+            stats: compute_stats(&loadout, inv.coins, missing),
+            pattern: shot_pattern(&loadout),
         });
     }
 }
@@ -186,6 +189,9 @@ fn read_input(
 ) {
     if keys.just_pressed(KeyCode::KeyE) {
         input.place_bomb = true;
+    }
+    if keys.just_pressed(KeyCode::KeyQ) {
+        input.use_active = true;
     }
 
     let mut dir = Vec2::ZERO;
@@ -243,6 +249,7 @@ fn player_shoot(
     time: Res<Time>,
     input: Res<PlayerInput>,
     assets: Res<GameAssets>,
+    mut run: ResMut<Run>,
     mut query: Query<(&Position, &Velocity, &PlayerStats, &mut ShootCooldown), With<Player>>,
     mut sfx: MessageWriter<Sfx>,
 ) {
@@ -270,15 +277,24 @@ fn player_shoot(
         for i in 0..n {
             let offset = (i as f32 - (n - 1) as f32 / 2.0) * SPREAD;
             let shot_dir = Vec2::from_angle(offset).rotate(dir);
+            // Jeder Schuss würfelt einzeln aus, ob er kritisch trifft, vergiftet
+            // oder einfriert – aus dem Effekt-Stream des Runs (deterministisch).
+            let roll = roll_shot(pattern, &mut run.effect_rng);
             commands.spawn(shot_bundle(
                 Shot {
                     position: pos.0,
                     velocity: shot_dir * speed + vel.0 * SHOT_INHERIT_VELOCITY,
                     lifetime,
-                    damage: stats.damage,
+                    damage: stats.damage * roll.damage_factor,
                     faction: Faction::Player,
                     piercing: pattern.piercing,
                     homing: pattern.homing,
+                    bounces: pattern.bounces,
+                    status: HitStatus {
+                        poison: roll.poison,
+                        freeze: roll.freeze,
+                    },
+                    crit: roll.crit,
                 },
                 &assets,
             ));

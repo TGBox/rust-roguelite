@@ -83,6 +83,37 @@ pub fn wall() -> Canvas {
     c
 }
 
+/// Rissige Mauer: Hier liegt ein Geheimraum. Eine Bombe sprengt sie auf.
+/// Der Riss ist deutlich, aber nicht grell – aufmerksame Spieler sehen ihn.
+pub fn wall_cracked() -> Canvas {
+    let mut c = wall();
+    // Zwei Risse von der Mitte aus, als feste Pixelpfade.
+    let crack = [
+        (7, 2),
+        (7, 3),
+        (8, 4),
+        (8, 5),
+        (7, 6),
+        (7, 7),
+        (8, 8),
+        (9, 9),
+        (9, 10),
+        (8, 11),
+        (8, 12),
+        (6, 7),
+        (5, 8),
+        (4, 8),
+        (10, 9),
+        (11, 10),
+    ];
+    for (x, y) in crack {
+        c.set(x, y, [14, 11, 11, 255]);
+        // Helle Kante daneben lässt den Riss „tief“ wirken.
+        c.set(x + 1, y, shade(c.get(x + 1, y), 18));
+    }
+    c
+}
+
 /// Fels: Bodenkachel mit Brocken darauf.
 pub fn rock() -> Canvas {
     let mut c = floor(0);

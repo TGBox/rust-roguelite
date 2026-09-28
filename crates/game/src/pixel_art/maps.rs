@@ -319,3 +319,183 @@ pub const ROCK_PALETTE: Palette = &[
 pub const KEYHOLE: &[&str] = &[".KK.", "KEEK", "KEEK", ".KK.", ".EE.", ".EE.", "KKKK"];
 
 pub const KEYHOLE_PALETTE: Palette = &[('K', [120, 85, 20, 255]), ('E', [20, 15, 10, 255])];
+
+// --- Spieltiefe: neue Gegner, Bosse, Altar --------------------------------------
+
+/// Hopper: grüner Frosch-Springer.
+pub const HOPPER: &[&str] = &[
+    "............",
+    "..KK....KK..",
+    ".KWEK..KWEK.",
+    ".KEEKKKKEEK.",
+    "KGGGGGGGGGGK",
+    "KGLLGGGGGGGK",
+    "KGLGGGGGGGGK",
+    "KGGKKKKKKGGK",
+    ".KGGGGGGGGK.",
+    "KDDK.KK.KDDK",
+    "KDK......KDK",
+    ".K........K.",
+];
+
+pub const HOPPER_PALETTE: Palette = &[
+    ('K', OUTLINE),
+    ('G', [90, 170, 70, 255]),
+    ('L', [160, 220, 120, 255]),
+    ('D', [50, 110, 45, 255]),
+    ('W', WHITE),
+    ('E', [20, 20, 15, 255]),
+];
+
+/// Splitter: pulsierender Schleim mit Kern – teilt sich beim Tod.
+pub const SPLITTER: &[&str] = &[
+    "....KKKK....",
+    "..KKSSSSKK..",
+    ".KSLLSSSSSK.",
+    ".KSLSSSSSSK.",
+    "KSSSSCCSSSSK",
+    "KSSSCWCCSSSK",
+    "KSSSCCCCSSSK",
+    "KSSSSCCSSSSK",
+    "KSWESSSSWESK",
+    ".KEESSSSEEK.",
+    "..KKSSSSKK..",
+    "....KKKK....",
+];
+
+pub const SPLITTER_PALETTE: Palette = &[
+    ('K', OUTLINE),
+    ('S', [150, 90, 190, 255]),
+    ('L', [200, 150, 230, 255]),
+    ('C', [230, 200, 90, 255]),
+    ('W', WHITE),
+    ('E', [25, 15, 30, 255]),
+];
+
+/// Splitling: kleiner Ableger des Splitters.
+pub const SPLITLING: &[&str] = &[
+    "..KKKK..", ".KSSSSK.", "KSLSSSSK", "KSWESWEK", "KSEESEEK", "KSSSSSSK", ".KSSSSK.", "..KKKK..",
+];
+
+/// Beschwörer: schwebende Maske mit Kerzenflammen.
+pub const SUMMONER: &[&str] = &[
+    ".Y........Y.",
+    ".O........O.",
+    ".W..KKKK..W.",
+    ".W.KMMMMK.W.",
+    "..KMMMMMMK..",
+    "..KMKKMKKM..",
+    "..KMRKMRKM..",
+    "..KMMMMMMK..",
+    "..KMMKKMMK..",
+    "...KMMMMK...",
+    "...KRRRRK...",
+    "....KKKK....",
+];
+
+pub const SUMMONER_PALETTE: Palette = &[
+    ('K', OUTLINE),
+    ('M', [225, 215, 200, 255]),
+    ('R', [200, 40, 60, 255]),
+    ('W', [235, 230, 210, 255]),
+    ('O', [240, 140, 30, 255]),
+    ('Y', [255, 230, 90, 255]),
+];
+
+/// Brutmutter (Boss Etage 2): riesiger grüner Schleim mit vielen Augen.
+pub const BROOD_MOTHER: &[&str] = &[
+    "......KKKKKKKK......",
+    "....KKGGGGGGGGKK....",
+    "...KGGLLGGGGGGGGK...",
+    "..KGGLLGGGGGGGGGGK..",
+    "..KGLGGKKGGGGKKGGK..",
+    ".KGGGGKWEKGGKWEKGGK.",
+    ".KGGGGKEEKGGKEEKGGK.",
+    ".KGGGGGKKGGGGKKGGGK.",
+    "KGGGKKGGGGKKGGGGGGGK",
+    "KGGKWEKGGKWEKGGGGGGK",
+    "KGGKEEKGGKEEKGGGGGGK",
+    "KGGGKKGGGGKKGGGGGGGK",
+    "KGGGGGGKKKKKKGGGGGGK",
+    "KGGGGGKTKTKTKKGGGGGK",
+    "KGGGGGKKKKKKKKGGGGGK",
+    ".KDGGGGGGGGGGGGGGDK.",
+    ".KDDGGDGGDGGDGGDDDK.",
+    "..KDDDDDDDDDDDDDDK..",
+    "...KKDDKKDDKKDDKK...",
+    ".....KK..KK..KK.....",
+];
+
+pub const BROOD_MOTHER_PALETTE: Palette = &[
+    ('K', OUTLINE),
+    ('G', [95, 150, 60, 255]),
+    ('L', [160, 210, 110, 255]),
+    ('D', [55, 95, 40, 255]),
+    ('W', [255, 240, 120, 255]),
+    ('E', [30, 15, 10, 255]),
+    ('T', [240, 235, 215, 255]),
+];
+
+/// Wächter (Boss Etage 3): steinerner Kopf mit glühenden Augen.
+pub const WARDEN: &[&str] = &[
+    "...KKKKKKKKKKKKKK...",
+    "..KSSSSSSSSSSSSSSK..",
+    ".KSLLSSSSSSSSSSSSSK.",
+    ".KSLSSSSDSSDSSSSSSK.",
+    "KSSSSSSSDSSDSSSSSSSK",
+    "KSSKKKKSSSSSSKKKKSSK",
+    "KSKCCCCKSSSSKCCCCKSK",
+    "KSKCWCCKSSSSKCWCCKSK",
+    "KSSKKKKSSSSSSKKKKSSK",
+    "KSSSSSSSSKKSSSSSSSSK",
+    "KSDSSSSSKSSKSSSSSDSK",
+    "KSDSSSSSKSSKSSSSSDSK",
+    "KSSSSSSSSSSSSSSSSSSK",
+    "KSSSKKKKKKKKKKKKSSSK",
+    "KSSSKCCCCCCCCCCKSSSK",
+    "KSSSKKKKKKKKKKKKSSSK",
+    ".KDSSSSSSSSSSSSSSDK.",
+    ".KDDSSDSSSSSSDSSDDK.",
+    "..KDDDDDDDDDDDDDDK..",
+    "...KKKKKKKKKKKKKK...",
+];
+
+pub const WARDEN_PALETTE: Palette = &[
+    ('K', OUTLINE),
+    ('S', [120, 125, 140, 255]),
+    ('L', [175, 180, 195, 255]),
+    ('D', [75, 78, 92, 255]),
+    ('C', [90, 220, 255, 255]),
+    ('W', WHITE),
+];
+
+/// Opferaltar: Steinblock mit Blutrinne.
+pub const ALTAR: &[&str] = &[
+    "....KKKKKK....",
+    "...KRRRRRRK...",
+    "..KKKKKKKKKK..",
+    ".KLLLLLLLLLLK.",
+    ".KSSSSSSSSSSK.",
+    ".KSSKKSSKKSSK.",
+    ".KSSKRSSKRSSK.",
+    ".KSSSSSSSSSSK.",
+    "KKKKKKKKKKKKKK",
+    "KDDDDDDDDDDDDK",
+    "KKKKKKKKKKKKKK",
+];
+
+pub const ALTAR_PALETTE: Palette = &[
+    ('K', OUTLINE),
+    ('R', [190, 25, 40, 255]),
+    ('L', [170, 160, 150, 255]),
+    ('S', [125, 118, 110, 255]),
+    ('D', [85, 80, 75, 255]),
+];
+
+/// Aktive Items: gleicher Sockel wie `ITEM`, aber ein oranger Edelstein.
+pub const ACTIVE_ITEM_PALETTE: Palette = &[
+    ('K', OUTLINE),
+    ('C', [255, 150, 40, 255]),
+    ('W', WHITE),
+    ('S', [140, 132, 125, 255]),
+];

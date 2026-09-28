@@ -19,7 +19,7 @@ use bevy::{
     prelude::*,
     reflect::TypePath,
 };
-use dungeon_gen::items::ItemDb;
+use dungeon_gen::items::{ITEMS_VERSION, ItemDb};
 use serde::Deserialize;
 
 use crate::inventory::Toast;
@@ -98,11 +98,31 @@ fn items_file() -> PathBuf {
         .join(ASSET_PATH)
 }
 
-/// Schreibt die eingebauten Items als RON, falls die Datei noch fehlt.
+/// Schreibt die eingebauten Items als RON, falls die Datei fehlt oder aus
+/// einer älteren Spielversion stammt. Eine alte Datei wird vorher gesichert –
+/// eigene Änderungen gehen so nicht verloren.
 fn ensure_items_file() {
     let path = items_file();
     if path.exists() {
-        return;
+        let old_version = fs::read_to_string(&path)
+            .ok()
+            .and_then(|text| ron::de::from_str::<ItemDbAsset>(&text).ok())
+            .map(|db| db.0.version);
+        match old_version {
+            Some(v) if v < ITEMS_VERSION => {
+                let backup = path.with_extension(format!("v{v}.bak"));
+                if let Err(e) = fs::rename(&path, &backup) {
+                    warn!("Alte items.ron konnte nicht gesichert werden: {e}");
+                    return;
+                }
+                info!(
+                    "items.ron war Version {v} – gesichert als {}, neue Datei wird angelegt",
+                    backup.display()
+                );
+            }
+            // Aktuell oder (von Hand kaputt editiert) unlesbar: nicht anfassen.
+            _ => return,
+        }
     }
     let text =
         match ron::ser::to_string_pretty(&ItemDb::builtin(), ron::ser::PrettyConfig::default()) {
@@ -142,6 +162,13 @@ fn apply_loaded_items(
         let Some(asset) = assets.get(id) else {
             continue;
         };
+        if asset.0.version < ITEMS_VERSION {
+            warn!(
+                "items.ron hat Version {} – eingebaute Items bleiben aktiv",
+                asset.0.version
+            );
+            continue;
+        }
         match asset.0.validate() {
             Ok(()) => {
                 db.0 = asset.0.clone();

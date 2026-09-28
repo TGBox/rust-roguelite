@@ -239,10 +239,20 @@ pub enum Effect {
     Unlock,
     Descend,
     Click,
+    /// Beschwörer/Brutmutter ruft Nachwuchs.
+    Summon,
+    /// Geheimraum freigesprengt.
+    Secret,
+    /// Aktives Item benutzt.
+    PowerUp,
+    /// Opfer am Altar.
+    Sacrifice,
+    /// Aktives Item ist voll aufgeladen.
+    Charged,
 }
 
 impl Effect {
-    pub const ALL: [Effect; 15] = [
+    pub const ALL: [Effect; 20] = [
         Effect::Shoot,
         Effect::EnemyShoot,
         Effect::Hit,
@@ -258,6 +268,11 @@ impl Effect {
         Effect::Unlock,
         Effect::Descend,
         Effect::Click,
+        Effect::Summon,
+        Effect::Secret,
+        Effect::PowerUp,
+        Effect::Sacrifice,
+        Effect::Charged,
     ];
 }
 
@@ -650,6 +665,120 @@ pub fn effect(effect: Effect) -> Track {
                 },
                 n,
             );
+        }
+        Effect::Summon => {
+            let tone = Tone {
+                wave: Wave::Saw,
+                from: 160.0,
+                to: 520.0,
+                duration: 0.35,
+                decay: 4.0,
+                volume: 0.4,
+                lowpass: 0.25,
+                vibrato: (0.05, 14.0),
+                ..Tone::default()
+            };
+            t.add(0.0, tone, n);
+            t.add(
+                0.05,
+                Tone {
+                    from: 240.0,
+                    to: 780.0,
+                    volume: 0.25,
+                    ..tone
+                },
+                n,
+            );
+        }
+        Effect::Secret => {
+            // Kleine Fanfare: aufsteigende Dur-Töne, der letzte lang.
+            for (i, note) in [67, 71, 74, 79].into_iter().enumerate() {
+                let last = i == 3;
+                let tone = Tone {
+                    wave: Wave::Square,
+                    from: midi(note),
+                    to: midi(note),
+                    duration: if last { 0.6 } else { 0.1 },
+                    decay: if last { 4.0 } else { 0.0 },
+                    volume: 0.3,
+                    lowpass: 0.5,
+                    ..Tone::default()
+                };
+                t.add(i as f32 * 0.1, tone, n);
+            }
+        }
+        Effect::PowerUp => {
+            let tone = Tone {
+                wave: Wave::Triangle,
+                from: 300.0,
+                to: 1200.0,
+                duration: 0.3,
+                decay: 3.0,
+                volume: 0.6,
+                ..Tone::default()
+            };
+            t.add(0.0, tone, n);
+            t.add(
+                0.0,
+                Tone {
+                    wave: Wave::Noise,
+                    duration: 0.3,
+                    decay: 8.0,
+                    volume: 0.2,
+                    lowpass: 0.2,
+                    ..tone
+                },
+                n,
+            );
+        }
+        Effect::Sacrifice => {
+            let tone = Tone {
+                wave: Wave::Sine,
+                from: midi(45),
+                to: midi(45),
+                duration: 0.9,
+                decay: 3.0,
+                volume: 0.7,
+                vibrato: (0.02, 5.0),
+                ..Tone::default()
+            };
+            t.add(0.0, tone, n);
+            t.add(
+                0.0,
+                Tone {
+                    from: midi(52),
+                    to: midi(52),
+                    volume: 0.4,
+                    ..tone
+                },
+                n,
+            );
+            t.add(
+                0.0,
+                Tone {
+                    wave: Wave::Noise,
+                    duration: 0.15,
+                    decay: 20.0,
+                    volume: 0.4,
+                    lowpass: 0.3,
+                    ..tone
+                },
+                n,
+            );
+        }
+        Effect::Charged => {
+            for (i, note) in [84, 91].into_iter().enumerate() {
+                let tone = Tone {
+                    wave: Wave::Sine,
+                    from: midi(note),
+                    to: midi(note),
+                    duration: 0.25,
+                    decay: 10.0,
+                    volume: 0.5,
+                    ..Tone::default()
+                };
+                t.add(i as f32 * 0.07, tone, n);
+            }
         }
         Effect::Click => {
             t.add(

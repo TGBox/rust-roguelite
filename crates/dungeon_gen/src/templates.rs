@@ -32,6 +32,9 @@ pub fn pool(kind: RoomKind) -> &'static [RoomTemplate] {
         RoomKind::Boss => BOSS,
         RoomKind::Treasure => TREASURE,
         RoomKind::Shop => SHOP,
+        RoomKind::Challenge => CHALLENGE,
+        RoomKind::Sacrifice => SACRIFICE,
+        RoomKind::Secret => SECRET,
     }
 }
 
@@ -178,6 +181,70 @@ const SHOP: &[RoomTemplate] = &[RoomTemplate {
     ascii: EMPTY,
 }];
 
+/// Herausforderung: Arena mit Deckung, damit man den Wellen ausweichen kann.
+const CHALLENGE: &[RoomTemplate] = &[
+    RoomTemplate {
+        name: "gauntlet",
+        ascii: "
+            ###############
+            #.............#
+            #..o...o...o..#
+            #.............#
+            #.............#
+            #.............#
+            #..o...o...o..#
+            #.............#
+            ###############
+        ",
+    },
+    RoomTemplate {
+        name: "pit_ring",
+        ascii: "
+            ###############
+            #.............#
+            #...__...__...#
+            #.............#
+            #.............#
+            #.............#
+            #...__...__...#
+            #.............#
+            ###############
+        ",
+    },
+];
+
+/// Opferraum: Der Altar steht in der Mitte, Gruben rahmen ihn ein.
+const SACRIFICE: &[RoomTemplate] = &[RoomTemplate {
+    name: "sacrifice",
+    ascii: "
+        ###############
+        #.............#
+        #.__.......__.#
+        #.............#
+        #.............#
+        #.............#
+        #.__.......__.#
+        #.............#
+        ###############
+    ",
+}];
+
+/// Geheimraum: klein wirkend durch viele Felsen.
+const SECRET: &[RoomTemplate] = &[RoomTemplate {
+    name: "hideout",
+    ascii: "
+        ###############
+        #oo.........oo#
+        #o...........o#
+        #.............#
+        #.............#
+        #.............#
+        #o...........o#
+        #oo.........oo#
+        ###############
+    ",
+}];
+
 #[cfg(test)]
 mod tests {
     use std::collections::{BTreeSet, VecDeque};
@@ -185,13 +252,7 @@ mod tests {
     use super::*;
     use crate::{Direction, GridPos, room::inside_door};
 
-    const ALL_KINDS: [RoomKind; 5] = [
-        RoomKind::Start,
-        RoomKind::Normal,
-        RoomKind::Boss,
-        RoomKind::Treasure,
-        RoomKind::Shop,
-    ];
+    const ALL_KINDS: [RoomKind; 8] = RoomKind::ALL;
 
     fn all_templates() -> impl Iterator<Item = &'static RoomTemplate> {
         ALL_KINDS.into_iter().flat_map(|k| pool(k).iter())

@@ -64,6 +64,11 @@ pub enum BodyKind {
 #[derive(Message, Debug, Clone, Copy)]
 pub struct TileHit {
     pub entity: Entity,
+    /// Auf welcher Achse die Kollision war – für Abpraller.
+    pub hit_x: bool,
+    pub hit_y: bool,
+    /// Geschwindigkeit *vor* dem Aufprall (danach ist die Achse auf 0 gesetzt).
+    pub velocity: Vec2,
 }
 
 /// Alle Physik-Komponenten mit **gleicher** Start- und Vorher-Position.
@@ -121,6 +126,7 @@ fn move_bodies(
         };
 
         pos.0 = room.tile_space_to_world(Vec2::from_array(result.center));
+        let velocity_before = vel.0;
         // Gegen die Wand gelaufen: Geschwindigkeit auf dieser Achse vernichten,
         // sonst „klebt“ man beim Loslassen noch einen Moment an der Wand.
         if result.hit_x {
@@ -130,7 +136,12 @@ fn move_bodies(
             vel.0.y = 0.0;
         }
         if result.hit_any() {
-            hits.write(TileHit { entity });
+            hits.write(TileHit {
+                entity,
+                hit_x: result.hit_x,
+                hit_y: result.hit_y,
+                velocity: velocity_before,
+            });
         }
     }
 }
