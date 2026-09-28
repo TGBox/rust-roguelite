@@ -27,7 +27,8 @@ pub struct RoomPlugin;
 
 impl Plugin for RoomPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(OnExit(AppState::InGame), leave_room)
+        app.add_message::<RoomCleared>()
+            .add_systems(OnExit(AppState::InGame), leave_room)
             .add_systems(FixedUpdate, unlock_when_cleared.in_set(GameSet::Cleanup))
             // Nur wenn sich `CurrentRoom` geändert hat (z. B. Türen auf/zu).
             .add_systems(
@@ -167,16 +168,24 @@ fn leave_room(mut commands: Commands) {
     commands.remove_resource::<CurrentRoom>();
 }
 
+/// Ein Raum mit Gegnern wurde gerade geräumt (für Belohnungen).
+#[derive(Message, Debug, Clone, Copy)]
+pub struct RoomCleared {
+    pub room: GridPos,
+}
+
 /// Kein Gegner mehr da? Türen öffnen und Raum als geräumt merken.
-fn unlock_when_cleared(
+pub fn unlock_when_cleared(
     mut room: ResMut<CurrentRoom>,
     mut run: ResMut<Run>,
     enemies: Query<(), With<Enemy>>,
+    mut cleared: MessageWriter<RoomCleared>,
 ) {
     // Nur lesen löst keine Change Detection aus – erst das Schreiben unten.
     if room.locked && enemies.is_empty() {
         room.locked = false;
         run.cleared.insert(room.pos);
+        cleared.write(RoomCleared { room: room.pos });
         info!("Raum {:?} geräumt – Türen offen", room.pos);
     }
 }

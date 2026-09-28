@@ -4,7 +4,11 @@
 //! Richtungen. Hält man mehrere Pfeiltasten, gewinnt die zuletzt gedrückte.
 
 use bevy::prelude::*;
-use dungeon_gen::room::CENTER;
+use dungeon_gen::{
+    items::{ShotPattern, compute_stats, shot_pattern},
+    room::CENTER,
+    stats::Stats,
+};
 
 use crate::{
     TILE_SIZE,
@@ -13,6 +17,7 @@ use crate::{
     physics::{Body, BodyKind, Position, Velocity, physics_body},
     projectile::{Shot, shot_bundle},
     room::CurrentRoom,
+    run::Run,
     schedule::GameSet,
     states::{AppState, InGameState},
 };
@@ -22,7 +27,11 @@ pub const PLAYER_RADIUS_TILES: f32 = 0.4;
 /// Hitbox bewusst kleiner als die Grafik: fühlt sich fairer an.
 const PLAYER_HALF_TILES: f32 = 0.3;
 /// Leben in halben Herzen.
-pub const PLAYER_MAX_HEALTH: i32 = 6;
+pub const PLAYER_MAX_HEALTH: f32 = 6.0;
+/// Wie schnell die Höchstgeschwindigkeit erreicht wird (1/s). Höher = direkter.
+const ACCELERATION: f32 = 14.0;
+/// Winkel zwischen zwei Schüssen einer Salve (Bogenmaß, ≈ 10°).
+const SPREAD: f32 = 0.18;
 /// Anteil der Spielergeschwindigkeit, den ein Schuss mitnimmt.
 const SHOT_INHERIT_VELOCITY: f32 = 0.3;
 
@@ -48,7 +57,7 @@ impl Plugin for PlayerPlugin {
             )
             .add_systems(
                 FixedUpdate,
-                (player_movement, player_shoot)
+                (refresh_player_stats, player_movement, player_shoot)
                     .chain()
                     .in_set(GameSet::Control),
             );
@@ -58,32 +67,19 @@ impl Plugin for PlayerPlugin {
 #[derive(Component)]
 pub struct Player;
 
-/// Werte, die später Items verändern (M6). Einheiten in Kacheln bzw. Sekunden.
-#[derive(Component, Debug, Clone)]
+/// Aktuelle Werte des Spielers – aus Grundwerten und Items berechnet
+/// (siehe `dungeon_gen::items::compute_stats`). Nie direkt verändern.
+#[derive(Component, Debug, Clone, PartialEq)]
 pub struct PlayerStats {
-    /// Höchstgeschwindigkeit (Kacheln/s).
-    pub move_speed: f32,
-    /// Wie schnell die Höchstgeschwindigkeit erreicht wird (1/s). Höher = direkter.
-    pub acceleration: f32,
-    /// Pause zwischen zwei Schüssen (s).
-    pub fire_delay: f32,
-    /// Schussgeschwindigkeit (Kacheln/s).
-    pub shot_speed: f32,
-    /// Reichweite (Kacheln).
-    pub range: f32,
-    /// Schaden pro Schuss.
-    pub damage: i32,
+    pub stats: Stats,
+    pub pattern: ShotPattern,
 }
 
 impl Default for PlayerStats {
     fn default() -> Self {
         Self {
-            move_speed: 5.0,
-            acceleration: 14.0,
-            fire_delay: 0.35,
-            shot_speed: 9.0,
-            range: 6.5,
-            damage: 2,
+            stats: Stats::BASE,
+            pattern: shot_pattern(&[]),
         }
     }
 }
@@ -127,6 +123,23 @@ pub fn spawn_player(mut commands: Commands, assets: Res<GameAssets>, room: Res<C
         Mesh2d(assets.player_mesh.clone()),
         MeshMaterial2d(assets.player_material.clone()),
     ));
+}
+
+/// Berechnet die Werte jeden Tick neu. Das ist billig und immer korrekt –
+/// auch für Effekte, die von Münzen oder fehlendem Leben abhängen.
+/// `set_if_neq` löst Change Detection nur bei echten Änderungen aus.
+fn refresh_player_stats(
+    run: Res<Run>,
+    mut query: Query<(&mut PlayerStats, &Health), With<Player>>,
+) {
+    let inv = &run.inventory;
+    for (mut stats, health) in &mut query {
+        let missing = (health.max - health.current).max(0.0) as u32;
+        stats.set_if_neq(PlayerStats {
+            stats: compute_stats(&inv.items, inv.coins, missing),
+            pattern: shot_pattern(&inv.items),
+        });
+    }
 }
 
 /// Platzhalter-Todesanimation: Spieler rot färben. Echte Animation in M8.
@@ -190,10 +203,10 @@ fn player_movement(
 ) {
     let dt = time.delta_secs();
     for (stats, mut vel) in &mut query {
-        let target = input.move_dir * stats.move_speed * TILE_SIZE;
+        let target = input.move_dir * stats.stats.move_speed * TILE_SIZE;
         // Exponentielle Annäherung: framerate-unabhängig und ohne Überschwingen.
         // Loslassen = Ziel null = sanftes Abbremsen.
-        let t = 1.0 - (-stats.acceleration * dt).exp();
+        let t = 1.0 - (-ACCELERATION * dt).exp();
         vel.0 = vel.0.lerp(target, t);
     }
 }
@@ -216,20 +229,29 @@ fn player_shoot(
         if cooldown.0 > 0.0 {
             continue;
         }
-        cooldown.0 = stats.fire_delay;
+        let PlayerStats { stats, pattern } = stats;
+        cooldown.0 = stats.fire_delay();
 
         let speed = stats.shot_speed * TILE_SIZE;
-        let velocity = dir * speed + vel.0 * SHOT_INHERIT_VELOCITY;
         let lifetime = stats.range * TILE_SIZE / speed;
-        commands.spawn(shot_bundle(
-            Shot {
-                position: pos.0,
-                velocity,
-                lifetime,
-                damage: stats.damage,
-                faction: Faction::Player,
-            },
-            &assets,
-        ));
+        // Salve gleichmäßig um die Schussrichtung fächern: bei 3 Schüssen
+        // Winkel -1, 0, +1 mal SPREAD.
+        let n = pattern.count;
+        for i in 0..n {
+            let offset = (i as f32 - (n - 1) as f32 / 2.0) * SPREAD;
+            let shot_dir = Vec2::from_angle(offset).rotate(dir);
+            commands.spawn(shot_bundle(
+                Shot {
+                    position: pos.0,
+                    velocity: shot_dir * speed + vel.0 * SHOT_INHERIT_VELOCITY,
+                    lifetime,
+                    damage: stats.damage,
+                    faction: Faction::Player,
+                    piercing: pattern.piercing,
+                    homing: pattern.homing,
+                },
+                &assets,
+            ));
+        }
     }
 }

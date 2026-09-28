@@ -36,6 +36,7 @@ pub struct CombatPlugin;
 impl Plugin for CombatPlugin {
     fn build(&self, app: &mut App) {
         app.add_message::<Damage>()
+            .add_message::<EnemyKilled>()
             .add_systems(
                 FixedUpdate,
                 (
@@ -53,12 +54,12 @@ impl Plugin for CombatPlugin {
 
 #[derive(Component, Debug, Clone, Copy)]
 pub struct Health {
-    pub current: i32,
-    pub max: i32,
+    pub current: f32,
+    pub max: f32,
 }
 
 impl Health {
-    pub fn full(max: i32) -> Self {
+    pub fn full(max: f32) -> Self {
         Self { current: max, max }
     }
 }
@@ -72,7 +73,7 @@ pub enum Faction {
 
 /// Schaden bei Berührung mit dem Spieler.
 #[derive(Component, Debug)]
-pub struct ContactDamage(pub i32);
+pub struct ContactDamage(pub f32);
 
 /// Verbleibende Unverwundbarkeit (s). Nur der Spieler hat diese Komponente.
 #[derive(Component, Debug, Default)]
@@ -85,23 +86,30 @@ pub struct BaseMaterial(pub Handle<ColorMaterial>);
 #[derive(Component, Debug)]
 struct HitFlash(f32);
 
+/// Ein Gegner ist gestorben (für Item-Effekte wie „Münze pro Kill“).
+#[derive(Message, Debug, Clone, Copy)]
+pub struct EnemyKilled;
+
 #[derive(Message, Debug, Clone, Copy)]
 pub struct Damage {
     pub target: Entity,
-    pub amount: i32,
+    pub amount: f32,
     /// Stoß in Pixel/s, wird auf die Geschwindigkeit addiert.
     pub knockback: Vec2,
 }
 
 fn projectile_hits(
     mut commands: Commands,
-    projectiles: Query<(Entity, &Position, &Body, &Velocity, &Projectile)>,
+    mut projectiles: Query<(Entity, &Position, &Body, &Velocity, &mut Projectile)>,
     targets: Query<(Entity, &Position, &Body, &Faction, &Health), Without<Projectile>>,
     mut damage: MessageWriter<Damage>,
 ) {
-    for (shot, shot_pos, shot_body, shot_vel, projectile) in &projectiles {
+    for (shot, shot_pos, shot_body, shot_vel, mut projectile) in &mut projectiles {
         for (target, pos, body, faction, health) in &targets {
-            if *faction == projectile.faction || health.current <= 0 {
+            if *faction == projectile.faction
+                || health.current <= 0.0
+                || projectile.already_hit.contains(&target)
+            {
                 continue;
             }
             let hit = aabb_overlap(
@@ -116,9 +124,14 @@ fn projectile_hits(
                     amount: projectile.damage,
                     knockback: shot_vel.0.normalize_or_zero() * SHOT_KNOCKBACK,
                 });
-                commands.entity(shot).try_despawn();
-                // Ein Schuss trifft nur ein Ziel.
-                break;
+                if projectile.piercing {
+                    // Durchschlagend: weiterfliegen, dieses Ziel aber nie wieder treffen.
+                    projectile.already_hit.push(target);
+                } else {
+                    commands.entity(shot).try_despawn();
+                    // Ein normaler Schuss trifft nur ein Ziel.
+                    break;
+                }
             }
         }
     }
@@ -134,7 +147,7 @@ fn contact_damage(
         return;
     }
     for (pos, body, contact, health) in &enemies {
-        if health.current <= 0 {
+        if health.current <= 0.0 {
             continue;
         }
         let touching = aabb_overlap(
@@ -181,7 +194,7 @@ fn apply_damage(
             // im selben Tick schon abprallt.
             inv.0 = PLAYER_IFRAMES;
         }
-        health.current = (health.current - hit.amount).max(0);
+        health.current = (health.current - hit.amount).max(0.0);
         velocity.0 += hit.knockback;
         material.0 = assets.flash_material.clone();
         commands.entity(hit.target).try_insert(HitFlash(FLASH_SECS));
@@ -193,15 +206,17 @@ fn handle_deaths(
     mut commands: Commands,
     query: Query<(Entity, &Health, Has<Player>), Changed<Health>>,
     mut next: ResMut<NextState<InGameState>>,
+    mut killed: MessageWriter<EnemyKilled>,
 ) {
     for (entity, health, is_player) in &query {
-        if health.current > 0 {
+        if health.current > 0.0 {
             continue;
         }
         if is_player {
             next.set(InGameState::Dying);
         } else {
             commands.entity(entity).try_despawn();
+            killed.write(EnemyKilled);
         }
     }
 }

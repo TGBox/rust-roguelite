@@ -157,6 +157,40 @@ impl RoomLayout {
         self
     }
 
+    /// Sprengt alle Felsen im 3×3-Bereich um `center` weg (Wände und Türen
+    /// bleiben). Gibt die zerstörten Kacheln zurück.
+    pub fn blast(&mut self, center: GridPos) -> Vec<GridPos> {
+        let mut destroyed = Vec::new();
+        for dy in -1..=1 {
+            for dx in -1..=1 {
+                let p = center + GridPos::new(dx, dy);
+                if self.get(p) == Some(Tile::Rock) {
+                    self.set(p, Tile::Floor);
+                    destroyed.push(p);
+                }
+            }
+        }
+        destroyed
+    }
+
+    /// Nächste Bodenkachel zu `target` (Breitensuche), z. B. für Beute, die
+    /// nicht in einer Grube landen soll. `occupied` wird übersprungen.
+    pub fn nearest_floor(&self, target: GridPos, occupied: &[GridPos]) -> Option<GridPos> {
+        let mut seen = std::collections::BTreeSet::from([target]);
+        let mut queue = std::collections::VecDeque::from([target]);
+        while let Some(p) = queue.pop_front() {
+            if self.get(p) == Some(Tile::Floor) && !occupied.contains(&p) {
+                return Some(p);
+            }
+            for (_, n) in p.neighbors() {
+                if self.get(n).is_some() && seen.insert(n) {
+                    queue.push_back(n);
+                }
+            }
+        }
+        None
+    }
+
     pub fn iter(&self) -> impl Iterator<Item = (GridPos, Tile)> {
         all_tiles().zip(self.tiles.iter().copied())
     }
@@ -397,6 +431,41 @@ mod tests {
     fn doors_are_walkable_but_stop_shots() {
         assert!(!Tile::Door.blocks_movement());
         assert!(Tile::Door.blocks_projectiles());
+    }
+
+    #[test]
+    fn blast_removes_only_nearby_rocks() {
+        let mut layout = RoomLayout::from_ascii(SAMPLE).unwrap();
+        // Felsen bei (3,6), (4,6), (3,5); Grube bei (10,6).
+        let destroyed = layout.blast(GridPos::new(3, 5));
+        assert_eq!(destroyed.len(), 3, "{destroyed:?}");
+        assert_eq!(layout.get(GridPos::new(3, 6)), Some(Tile::Floor));
+        assert_eq!(
+            layout.get(GridPos::new(3, 2)),
+            Some(Tile::Rock),
+            "zu weit weg"
+        );
+        // Am Rand: Wände überleben.
+        let destroyed = layout.blast(GridPos::new(1, 1));
+        assert!(destroyed.is_empty());
+        assert_eq!(layout.get(GridPos::new(0, 0)), Some(Tile::Wall));
+    }
+
+    #[test]
+    fn nearest_floor_avoids_pits_and_occupied_tiles() {
+        let layout = crate::templates::pool(crate::RoomKind::Normal)
+            .iter()
+            .find(|t| t.name == "pit_center")
+            .unwrap()
+            .layout();
+        assert_eq!(layout.get(CENTER), Some(Tile::Pit));
+        let p = layout.nearest_floor(CENTER, &[]).unwrap();
+        assert_eq!(layout.get(p), Some(Tile::Floor));
+        assert!(p.manhattan(CENTER) <= 3);
+        let q = layout.nearest_floor(CENTER, &[p]).unwrap();
+        assert_ne!(p, q);
+        let empty = RoomLayout::empty();
+        assert_eq!(empty.nearest_floor(CENTER, &[]), Some(CENTER));
     }
 
     #[test]

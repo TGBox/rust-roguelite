@@ -1,12 +1,16 @@
-//! Der laufende Run: Seed, aktuelle Etage, besuchte und geräumte Räume.
+//! Der laufende Run: Seed, Etage, Fortschritt, Inventar und liegende Beute.
 //!
 //! Hier steht auch die **Startreihenfolge** eines Runs, weil sie mehrere
 //! Module betrifft: erst Run anlegen, dann ersten Raum, dann Spieler.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use bevy::prelude::*;
-use dungeon_gen::{Floor, GridPos, RunSeed, floor};
+use dungeon_gen::{
+    Floor, GridPos, Rng, RunSeed, floor,
+    items::{ItemDef, ItemPools},
+    loot::{Loot, START_BOMBS, START_KEYS},
+};
 
 use crate::{player, room, states::AppState};
 
@@ -39,6 +43,27 @@ pub struct Run {
     pub visited: BTreeSet<GridPos>,
     /// Räume ohne verbleibende Gegner.
     pub cleared: BTreeSet<GridPos>,
+    pub inventory: Inventory,
+    /// Noch nicht vergebene Items.
+    pub pools: ItemPools,
+    /// Beute, die in den Räumen liegt: Raum → (Kachel, Beute).
+    /// So bleibt Liegengelassenes erhalten, wenn man den Raum verlässt.
+    pub loot: BTreeMap<GridPos, Vec<(GridPos, Loot)>>,
+    /// Räume, deren Beute schon festgelegt wurde.
+    pub loot_prepared: BTreeSet<GridPos>,
+    /// Eigene Zufallsfolgen, damit z. B. Kill-Effekte nicht die Item-Auswahl verschieben.
+    pub item_rng: Rng,
+    pub effect_rng: Rng,
+}
+
+/// Was der Spieler bei sich trägt.
+#[derive(Debug, Default)]
+pub struct Inventory {
+    pub coins: u32,
+    pub keys: u32,
+    pub bombs: u32,
+    /// Eingesammelte Items in Reihenfolge des Aufhebens.
+    pub items: Vec<&'static ItemDef>,
 }
 
 fn start_run(mut commands: Commands) {
@@ -56,6 +81,16 @@ fn start_run(mut commands: Commands) {
         floor,
         visited: BTreeSet::new(),
         cleared: BTreeSet::new(),
+        inventory: Inventory {
+            keys: START_KEYS,
+            bombs: START_BOMBS,
+            ..default()
+        },
+        pools: ItemPools::default(),
+        loot: BTreeMap::new(),
+        loot_prepared: BTreeSet::new(),
+        item_rng: seed.stream("items", 0),
+        effect_rng: seed.stream("effects", 0),
     });
 }
 

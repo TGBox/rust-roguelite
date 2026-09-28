@@ -8,6 +8,7 @@ mod camera;
 mod combat;
 mod debug;
 mod enemy;
+mod inventory;
 mod physics;
 mod player;
 mod projectile;
@@ -53,7 +54,11 @@ fn main() {
             projectile::ProjectilePlugin,
             enemy::EnemyPlugin,
             combat::CombatPlugin,
+        ))
+        // Zweiter Aufruf: Tupel von Plugins sind auf 15 Elemente begrenzt.
+        .add_plugins((
             transition::TransitionPlugin,
+            inventory::InventoryPlugin,
             ui::UiPlugin,
             debug::DebugPlugin,
         ))

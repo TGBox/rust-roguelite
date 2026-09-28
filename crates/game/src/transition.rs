@@ -17,6 +17,7 @@ use crate::{
     assets::GameAssets,
     camera::MainCamera,
     enemy::spawn_room_enemies,
+    inventory,
     physics::{Position, PreviousPosition, Velocity},
     player::Player,
     room::{CurrentRoom, RoomScoped, RoomTile, spawn_room_tiles},
@@ -163,6 +164,10 @@ fn animate_transition(
             run.cleared.insert(room.pos);
         }
     }
+    // Beute festlegen (nur beim ersten Besuch) und alles Liegende spawnen.
+    inventory::prepare_room_loot(&mut run, &room);
+    inventory::spawn_room_loot(&mut commands, &run, &room, &assets);
+
     commands.remove_resource::<Pan>();
     next.set(InGameState::Playing);
 }

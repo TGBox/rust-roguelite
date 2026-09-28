@@ -7,10 +7,13 @@
 pub mod collision;
 pub mod floor;
 pub mod grid;
+pub mod items;
+pub mod loot;
 pub mod pathing;
 pub mod rng;
 pub mod room;
 pub mod spawns;
+pub mod stats;
 pub mod templates;
 
 pub use floor::{Floor, RoomInfo, RoomKind};

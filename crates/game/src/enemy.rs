@@ -105,8 +105,8 @@ pub struct Boss {
 // --- Werte je Typ -------------------------------------------------------------
 
 struct EnemyStats {
-    health: i32,
-    contact_damage: i32,
+    health: f32,
+    contact_damage: f32,
     half_tiles: f32,
     mobility: Mobility,
 }
@@ -118,26 +118,26 @@ fn stats(kind: EnemyKind) -> EnemyStats {
     };
     match kind {
         EnemyKind::Chaser => EnemyStats {
-            health: 6,
-            contact_damage: 1,
+            health: 6.0,
+            contact_damage: 1.0,
             half_tiles: ENEMY_HALF_TILES,
             mobility: m(2.6, 8.0),
         },
         EnemyKind::Shooter => EnemyStats {
-            health: 5,
-            contact_damage: 1,
+            health: 5.0,
+            contact_damage: 1.0,
             half_tiles: ENEMY_HALF_TILES,
             mobility: m(2.0, 6.0),
         },
         EnemyKind::Charger => EnemyStats {
-            health: 8,
-            contact_damage: 1,
+            health: 8.0,
+            contact_damage: 1.0,
             half_tiles: ENEMY_HALF_TILES,
             mobility: m(1.4, 6.0),
         },
         EnemyKind::Boss => EnemyStats {
-            health: 50,
-            contact_damage: 2,
+            health: 50.0,
+            contact_damage: 2.0,
             half_tiles: BOSS_HALF_TILES,
             mobility: m(1.3, 3.0),
         },
@@ -264,8 +264,10 @@ fn enemy_shot(from: Vec2, dir: Vec2, speed_tiles: f32, assets: &GameAssets) -> i
             position: from,
             velocity: dir * speed,
             lifetime: 9.0 * TILE_SIZE / speed,
-            damage: 1,
+            damage: 1.0,
             faction: Faction::Enemy,
+            piercing: false,
+            homing: false,
         },
         assets,
     )

@@ -7,8 +7,8 @@ use bevy::prelude::*;
 use crate::{
     TILE_SIZE,
     assets::GameAssets,
-    combat::Faction,
-    physics::{Body, BodyKind, TileHit, physics_body},
+    combat::{Faction, Health},
+    physics::{Body, BodyKind, Position, TileHit, Velocity, physics_body},
     room::RoomScoped,
     schedule::GameSet,
     states::AppState,
@@ -23,7 +23,8 @@ impl Plugin for ProjectilePlugin {
         app.add_systems(
             FixedUpdate,
             (tick_lifetime, despawn_on_tile_hit).in_set(GameSet::Cleanup),
-        );
+        )
+        .add_systems(FixedUpdate, steer_homing_shots.in_set(GameSet::Control));
     }
 }
 
@@ -31,9 +32,15 @@ impl Plugin for ProjectilePlugin {
 pub struct Projectile {
     /// Verbleibende Flugzeit (s).
     pub remaining: f32,
-    pub damage: i32,
+    pub damage: f32,
     /// Wer geschossen hat. Trifft nur die jeweils andere Seite.
     pub faction: Faction,
+    /// Fliegt durch Ziele hindurch.
+    pub piercing: bool,
+    /// Lenkt zum nächsten Ziel.
+    pub homing: bool,
+    /// Bei durchschlagenden Schüssen: schon getroffene Ziele.
+    pub already_hit: Vec<Entity>,
 }
 
 /// Alle Parameter eines Schusses. Eine Struktur statt sechs Funktionsargumenten:
@@ -43,8 +50,10 @@ pub struct Shot {
     pub position: Vec2,
     pub velocity: Vec2,
     pub lifetime: f32,
-    pub damage: i32,
+    pub damage: f32,
     pub faction: Faction,
+    pub piercing: bool,
+    pub homing: bool,
 }
 
 pub fn shot_bundle(shot: Shot, assets: &GameAssets) -> impl Bundle {
@@ -60,6 +69,9 @@ pub fn shot_bundle(shot: Shot, assets: &GameAssets) -> impl Bundle {
             remaining: shot.lifetime,
             damage: shot.damage,
             faction: shot.faction,
+            piercing: shot.piercing,
+            homing: shot.homing,
+            already_hit: Vec::new(),
         },
         physics_body(
             shot.position,
@@ -101,5 +113,40 @@ fn despawn_on_tile_hit(
         if projectiles.contains(hit.entity) {
             commands.entity(hit.entity).try_despawn();
         }
+    }
+}
+
+/// Zielsuchende Schüsse drehen sich langsam zum nächsten gegnerischen Ziel.
+/// Die Geschwindigkeit (Betrag) bleibt gleich, nur die Richtung ändert sich.
+fn steer_homing_shots(
+    time: Res<Time>,
+    mut shots: Query<(&Position, &mut Velocity, &Projectile)>,
+    targets: Query<(&Position, &Faction), (With<Health>, Without<Projectile>)>,
+) {
+    const SEARCH_RADIUS_TILES: f32 = 5.0;
+    const TURN_RATE: f32 = 6.0;
+
+    let dt = time.delta_secs();
+    let radius = SEARCH_RADIUS_TILES * TILE_SIZE;
+    for (pos, mut vel, projectile) in &mut shots {
+        if !projectile.homing {
+            continue;
+        }
+        let nearest = targets
+            .iter()
+            .filter(|(_, f)| **f != projectile.faction)
+            .map(|(p, _)| p.0 - pos.0)
+            .filter(|d| d.length() < radius)
+            .min_by(|a, b| a.length().total_cmp(&b.length()));
+        let Some(to_target) = nearest else {
+            continue;
+        };
+        let speed = vel.0.length();
+        let current = vel.0.normalize_or_zero();
+        let wanted = to_target.normalize_or_zero();
+        let turned = current
+            .lerp(wanted, (TURN_RATE * dt).min(1.0))
+            .normalize_or_zero();
+        vel.0 = turned * speed;
     }
 }

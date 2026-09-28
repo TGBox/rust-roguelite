@@ -9,6 +9,7 @@ use bevy::prelude::*;
 use crate::{
     TILE_SIZE,
     enemy::{BOSS_HALF_TILES, ENEMY_HALF_TILES},
+    inventory::{ITEM_HALF_TILES, PICKUP_HALF_TILES},
     player::PLAYER_RADIUS_TILES,
     projectile::TEAR_RADIUS_TILES,
 };
@@ -46,6 +47,14 @@ pub struct GameAssets {
     pub enemy_shot_material: Handle<ColorMaterial>,
     /// Kurzes weißes Aufblitzen bei Treffern.
     pub flash_material: Handle<ColorMaterial>,
+    pub pickup_mesh: Handle<Mesh>,
+    pub item_mesh: Handle<Mesh>,
+    pub half_heart_material: Handle<ColorMaterial>,
+    pub heart_material: Handle<ColorMaterial>,
+    pub coin_material: Handle<ColorMaterial>,
+    pub key_material: Handle<ColorMaterial>,
+    pub bomb_material: Handle<ColorMaterial>,
+    pub item_material: Handle<ColorMaterial>,
 }
 
 /// `FromWorld` statt `Default`: Wir brauchen Zugriff auf andere Ressourcen
@@ -54,7 +63,7 @@ impl FromWorld for GameAssets {
     fn from_world(world: &mut World) -> Self {
         // Eigener Block, damit der mutable Borrow auf `Assets<Mesh>` endet,
         // bevor wir `Assets<ColorMaterial>` ausleihen.
-        let (tile_mesh, player_mesh, tear_mesh, enemy_mesh, boss_mesh) = {
+        let (tile_mesh, player_mesh, tear_mesh, enemy_mesh, boss_mesh, pickup_mesh, item_mesh) = {
             let mut meshes = world.resource_mut::<Assets<Mesh>>();
             (
                 // 1 px kleiner als die Kachel: ergibt ein dezentes Raster.
@@ -67,6 +76,12 @@ impl FromWorld for GameAssets {
                 meshes.add(Rectangle::from_size(Vec2::splat(
                     BOSS_HALF_TILES * 2.0 * TILE_SIZE,
                 ))),
+                meshes.add(Circle::new(PICKUP_HALF_TILES * TILE_SIZE)),
+                // Raute: ein um 45° gedrehtes Quadrat als Item-Symbol.
+                meshes.add(Rhombus::new(
+                    ITEM_HALF_TILES * 2.0 * TILE_SIZE,
+                    ITEM_HALF_TILES * 2.0 * TILE_SIZE,
+                )),
             )
         };
 
@@ -92,6 +107,14 @@ impl FromWorld for GameAssets {
             boss_material: materials.add(Color::srgb(0.60, 0.15, 0.50)),
             enemy_shot_material: materials.add(Color::srgb(0.95, 0.35, 0.30)),
             flash_material: materials.add(Color::srgb(1.0, 1.0, 1.0)),
+            pickup_mesh,
+            item_mesh,
+            half_heart_material: materials.add(Color::srgb(0.95, 0.45, 0.50)),
+            heart_material: materials.add(Color::srgb(0.90, 0.10, 0.15)),
+            coin_material: materials.add(Color::srgb(0.95, 0.80, 0.20)),
+            key_material: materials.add(Color::srgb(0.75, 0.78, 0.85)),
+            bomb_material: materials.add(Color::srgb(0.12, 0.12, 0.14)),
+            item_material: materials.add(Color::srgb(0.40, 0.90, 0.95)),
         }
     }
 }
