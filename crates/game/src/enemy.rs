@@ -11,7 +11,7 @@
 use std::f32::consts::TAU;
 
 use bevy::prelude::*;
-use dungeon_gen::{EnemyKind, GridPos, pathing::FlowField, spawns};
+use dungeon_gen::{EnemyKind, GridPos, meta, pathing::FlowField, spawns};
 
 use crate::{
     TILE_SIZE,
@@ -160,8 +160,12 @@ pub fn spawn_room_enemies(
     let mut rng = spawns::spawn_rng(run.seed, run.floor.depth, room.pos);
     let plan = spawns::plan_spawns(info.kind, &room.layout, &mut rng);
 
+    // Tiefere Etagen: zähere und etwas schnellere Gegner.
+    let depth = run.floor.depth;
     for spawn in &plan {
-        let s = stats(spawn.kind);
+        let mut s = stats(spawn.kind);
+        s.health *= meta::enemy_health_multiplier(depth);
+        s.mobility.speed *= meta::enemy_speed_multiplier(depth);
         let (mesh, material) = match spawn.kind {
             EnemyKind::Chaser => (&assets.enemy_mesh, &assets.chaser_material),
             EnemyKind::Shooter => (&assets.enemy_mesh, &assets.shooter_material),

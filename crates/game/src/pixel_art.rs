@@ -173,6 +173,32 @@ pub const BOMB_PALETTE: Palette = &[
     ('Y', [255, 230, 90, 255]),
 ];
 
+/// Falltür (Holzrahmen, dunkles Loch) – mit anderer Palette der goldene Ausgang.
+pub const TRAPDOOR: &[&str] = &[
+    ".KKKKKKKKKKKK.",
+    "KWWWWWWWWWWWWK",
+    "KWHHHHHHHHHHWK",
+    "KWHHHHHHHHHHWK",
+    "KWHHHHHHHHHHWK",
+    "KWHHHHHHHHHHWK",
+    "KWHHHHHHHHHHWK",
+    "KWHHHHHHHHHHWK",
+    "KWWWWWWWWWWWWK",
+    ".KKKKKKKKKKKK.",
+];
+
+pub const TRAPDOOR_PALETTE: Palette = &[
+    ('K', OUTLINE),
+    ('W', [125, 82, 45, 255]),
+    ('H', [6, 5, 8, 255]),
+];
+
+pub const EXIT_PALETTE: Palette = &[
+    ('K', OUTLINE),
+    ('W', [235, 195, 60, 255]),
+    ('H', [255, 245, 190, 255]),
+];
+
 /// Edelstein über einem Steinsockel.
 pub const ITEM: &[&str] = &[
     ".....KK.....",
@@ -203,7 +229,9 @@ mod tests {
     #[test]
     fn all_sprites_are_rectangular_and_fully_mapped() {
         // `rgba_from_ascii` panict bei Fehlern – der Test ruft es nur für alle auf.
-        let sprites: [(&[&str], Palette); 6] = [
+        let sprites: [(&[&str], Palette); 8] = [
+            (TRAPDOOR, TRAPDOOR_PALETTE),
+            (TRAPDOOR, EXIT_PALETTE),
             (HEART, HEART_FULL),
             (HEART, HEART_EMPTY),
             (COIN, COIN_PALETTE),

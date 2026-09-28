@@ -67,6 +67,8 @@ pub struct Sprites {
     pub key: Handle<Image>,
     pub bomb: Handle<Image>,
     pub item: Handle<Image>,
+    pub trapdoor: Handle<Image>,
+    pub exit: Handle<Image>,
 }
 
 /// `FromWorld` statt `Default`: Wir brauchen Zugriff auf andere Ressourcen
@@ -104,6 +106,8 @@ impl FromWorld for GameAssets {
                 key: images.add(image_from_ascii(KEY, KEY_PALETTE)),
                 bomb: images.add(image_from_ascii(BOMB, BOMB_PALETTE)),
                 item: images.add(image_from_ascii(ITEM, ITEM_PALETTE)),
+                trapdoor: images.add(image_from_ascii(TRAPDOOR, TRAPDOOR_PALETTE)),
+                exit: images.add(image_from_ascii(TRAPDOOR, EXIT_PALETTE)),
             }
         };
 

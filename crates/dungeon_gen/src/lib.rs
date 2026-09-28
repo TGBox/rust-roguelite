@@ -9,6 +9,7 @@ pub mod floor;
 pub mod grid;
 pub mod items;
 pub mod loot;
+pub mod meta;
 pub mod pathing;
 pub mod rng;
 pub mod room;

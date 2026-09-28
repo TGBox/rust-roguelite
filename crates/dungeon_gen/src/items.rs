@@ -343,6 +343,13 @@ impl Default for ItemPools {
 }
 
 impl ItemPools {
+    /// Alle Items außer den gesperrten (siehe `meta::locked_items`).
+    pub fn without(locked: &[&str]) -> Self {
+        Self {
+            remaining: ITEMS.iter().filter(|i| !locked.contains(&i.id)).collect(),
+        }
+    }
+
     /// Zieht ein Item aus `pool` und entfernt es aus allen Pools.
     pub fn draw(&mut self, pool: Pool, rng: &mut Rng) -> &'static ItemDef {
         let candidates: Vec<usize> = self
@@ -465,6 +472,16 @@ mod tests {
         }
         // Irgendwann ist der Schatz-Pool leer, dann kommt das Frühstück.
         assert_eq!(pools.draw(Treasure, &mut rng).id, FALLBACK.id);
+    }
+
+    #[test]
+    fn locked_items_never_drop() {
+        let mut pools = ItemPools::without(&["shotgun", "steak"]);
+        let mut rng = Rng::from_seed(8);
+        for _ in 0..100 {
+            let id = pools.draw(Boss, &mut rng).id;
+            assert!(id != "shotgun" && id != "steak", "{id}");
+        }
     }
 
     #[test]

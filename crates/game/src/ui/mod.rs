@@ -8,6 +8,7 @@ use bevy::prelude::*;
 
 use crate::{
     assets::GameAssets,
+    run::{ChosenSeed, LastRun},
     states::{AppState, InGameState},
 };
 
@@ -28,6 +29,9 @@ impl Plugin for UiPlugin {
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MenuAction {
     StartRun,
+    /// Neuer Run mit dem Seed des letzten Runs.
+    RetrySeed,
+    EnterSeed,
     Resume,
     ToMainMenu,
     Quit,
@@ -141,11 +145,17 @@ fn button_actions(
     mut app_state: ResMut<NextState<AppState>>,
     mut in_game: ResMut<NextState<InGameState>>,
     mut exit: MessageWriter<AppExit>,
+    mut chosen: ResMut<ChosenSeed>,
+    last: Option<Res<LastRun>>,
 ) {
     for (interaction, action) in &query {
-        if *interaction == Interaction::Pressed {
-            perform(*action, &mut app_state, &mut in_game, &mut exit);
+        if *interaction != Interaction::Pressed {
+            continue;
         }
+        if *action == MenuAction::RetrySeed {
+            chosen.0 = last.as_ref().map(|l| l.seed);
+        }
+        perform(*action, &mut app_state, &mut in_game, &mut exit);
     }
 }
 
@@ -157,7 +167,8 @@ fn perform(
     exit: &mut MessageWriter<AppExit>,
 ) {
     match action {
-        MenuAction::StartRun => app_state.set(AppState::InGame),
+        MenuAction::StartRun | MenuAction::RetrySeed => app_state.set(AppState::InGame),
+        MenuAction::EnterSeed => app_state.set(AppState::SeedEntry),
         MenuAction::Resume => in_game.set(InGameState::Playing),
         MenuAction::ToMainMenu => app_state.set(AppState::MainMenu),
         MenuAction::Quit => {

@@ -45,6 +45,7 @@ enum Counter {
     Coins,
     Keys,
     Bombs,
+    Depth,
 }
 
 #[derive(Component)]
@@ -112,6 +113,14 @@ fn spawn_hud(mut commands: Commands, assets: Res<GameAssets>) {
                     (Counter::Keys, hud_text(18.0, TEXT)),
                     icon(&s.bomb, pixel_art::BOMB),
                     (Counter::Bombs, hud_text(18.0, TEXT)),
+                    (
+                        Counter::Depth,
+                        hud_text(18.0, TEXT_DIM),
+                        Node {
+                            margin: UiRect::left(px(18)),
+                            ..default()
+                        }
+                    ),
                 ]
             ),
             (ItemsText, hud_text(14.0, TEXT_DIM)),
@@ -168,12 +177,12 @@ fn update_counters(
 ) {
     let inv = &run.inventory;
     for (counter, mut text) in &mut counters {
-        let value = match counter {
-            Counter::Coins => inv.coins,
-            Counter::Keys => inv.keys,
-            Counter::Bombs => inv.bombs,
+        text.0 = match counter {
+            Counter::Coins => format!("{:02}", inv.coins),
+            Counter::Keys => format!("{:02}", inv.keys),
+            Counter::Bombs => format!("{:02}", inv.bombs),
+            Counter::Depth => format!("Etage {}/{}", run.floor.depth, dungeon_gen::meta::MAX_DEPTH),
         };
-        text.0 = format!("{value:02}");
     }
     let names: Vec<&str> = inv.items.iter().map(|i| i.name).collect();
     items.0 = if names.is_empty() {

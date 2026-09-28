@@ -13,6 +13,8 @@ mod inventory;
 mod physics;
 mod pixel_art;
 mod player;
+mod profile;
+mod progress;
 mod projectile;
 mod room;
 mod run;
@@ -62,6 +64,8 @@ fn main() {
             transition::TransitionPlugin,
             inventory::InventoryPlugin,
             bomb::BombPlugin,
+            progress::ProgressPlugin,
+            profile::ProfilePlugin,
             ui::UiPlugin,
             debug::DebugPlugin,
         ))

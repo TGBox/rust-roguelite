@@ -20,6 +20,7 @@ use crate::{
     inventory,
     physics::{Position, PreviousPosition, Velocity},
     player::Player,
+    progress,
     room::{CurrentRoom, RoomScoped, RoomTile, spawn_room_tiles},
     run::Run,
     schedule::GameSet,
@@ -158,6 +159,7 @@ fn animate_transition(
     // Beute festlegen (nur beim ersten Besuch) und alles Liegende spawnen.
     inventory::prepare_room_loot(&mut run, &room);
     inventory::spawn_room_loot(&mut commands, &run, &room, &assets);
+    progress::spawn_trapdoor(&mut commands, &run, &room, &assets);
 
     commands.remove_resource::<Pan>();
     next.set(InGameState::Playing);

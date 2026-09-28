@@ -1,14 +1,15 @@
 //! Spielzustände und Übergänge.
 //!
 //! ```text
-//! AppState:    MainMenu ──▶ InGame ──▶ GameOver ──▶ InGame (neuer Run)
+//! AppState:    MainMenu ──▶ InGame ──▶ RunSummary ──▶ InGame (neuer Run)
+//!              MainMenu ──▶ SeedEntry ──▶ InGame
 //!                 ▲            │           │
 //!                 └────────────┴───────────┘  (Hauptmenü)
 //!
 //! InGameState (existiert nur während AppState::InGame):
 //!              Playing ⇄ Paused
 //!              Playing ──▶ RoomTransition ──▶ Playing
-//!              Playing ──▶ Dying ──(1 s)──▶ AppState::GameOver
+//!              Playing ──▶ Dying ──(1 s)──▶ AppState::RunSummary
 //! ```
 //!
 //! Solange nicht `Playing` gilt, ist die **virtuelle Zeit** angehalten.
@@ -16,6 +17,8 @@
 //! und alles friert sauber ein – ohne dass jedes System es selbst prüfen muss.
 
 use bevy::prelude::*;
+
+use crate::run::RunEnd;
 
 pub struct StatesPlugin;
 
@@ -43,8 +46,11 @@ impl Plugin for StatesPlugin {
 pub enum AppState {
     #[default]
     MainMenu,
+    /// Seed per Tastatur eingeben, um einen bestimmten Run zu spielen.
+    SeedEntry,
     InGame,
-    GameOver,
+    /// Zusammenfassung nach Sieg oder Tod.
+    RunSummary,
 }
 
 /// Sub-State: wird beim Betreten von `AppState::InGame` automatisch mit dem
@@ -93,6 +99,8 @@ fn toggle_pause(
 
 fn start_death_timer(mut commands: Commands) {
     commands.insert_resource(DeathTimer(DEATH_DELAY_SECS));
+    // Für die Auswertung beim Verlassen von `InGame` (siehe `run::finalize_run`).
+    commands.insert_resource(RunEnd::Death);
 }
 
 /// Nutzt `Time<Real>`, weil die virtuelle Zeit während `Dying` angehalten ist.
@@ -105,6 +113,6 @@ fn tick_death_timer(
     timer.0 -= time.delta_secs();
     if timer.0 <= 0.0 {
         commands.remove_resource::<DeathTimer>();
-        app_state.set(AppState::GameOver);
+        app_state.set(AppState::RunSummary);
     }
 }

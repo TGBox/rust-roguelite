@@ -118,7 +118,7 @@ Jeder Meilenstein endet mit etwas **Spielbarem oder Testbarem**. „DoD“ = Def
 - **DoD:** `cargo test -p dungeon_gen` grün; ASCII-Ausgabe einer Etage per Beispiel-Binary.
 - *Lernfokus:* reine Datenmodelle, `serde`, Trait-basierte Generator-Schritte, Property-Testing.
 
-### M4 – Räume im Spiel
+### M4 – Räume im Spiel ✅
 - Etage aus `dungeon_gen` in Bevy spawnen (nur aktiven Raum als Entities).
 - Türen: offen/zu/verschlossen; schließen beim Betreten eines ungeklärten Raums, öffnen nach letztem Gegner.
 - Raumwechsel mit Kamera-Schwenk (`InGameState::RoomTransition`).
@@ -126,7 +126,7 @@ Jeder Meilenstein endet mit etwas **Spielbarem oder Testbarem**. „DoD“ = Def
 - **DoD:** Komplette Etage begehbar, Türen reagieren korrekt.
 - *Lernfokus:* Ressourcen vs. Entities, Relationships (Raum ↔ Inhalt), Observer.
 
-### M5 – Gegner & Kampf
+### M5 – Gegner & Kampf ✅
 - `Health`, `Damage`-Message, Knockback, Unverwundbarkeitsframes, Kontaktschaden.
 - Gegnertypen: *Chaser* (läuft zum Spieler), *Shooter* (hält Abstand, schießt), *Charger* (Anlauf + Sprint).
 - Pathfinding per **Flowfield** (Dijkstra-Map vom Spieler, einmal pro Tick für alle Gegner).
@@ -135,7 +135,7 @@ Jeder Meilenstein endet mit etwas **Spielbarem oder Testbarem**. „DoD“ = Def
 - **DoD:** Räume mit Gegnern räumbar, Boss besiegbar, Spieler kann sterben.
 - *Lernfokus:* Messages vs. Observer, generische Systeme, Enum-Zustandsmaschinen.
 
-### M6 – Items, Stats & Synergien
+### M6 – Items, Stats & Synergien ✅ (M6a: Items als Rust-Daten; M6b offen: RON + Hot-Reload)
 - Item-Definitionen in RON (`id`, Name, Seltenheit, Pool, Modifier, Trigger).
 - Stat-System: `Base → +Flat → ×Mult`, neu berechnet bei Änderung (Change Detection).
 - Trigger-Effekte (`OnHit`, `OnKill`, `OnRoomClear`, `OnPickupGold`) über Observer.
@@ -143,10 +143,10 @@ Jeder Meilenstein endet mit etwas **Spielbarem oder Testbarem**. „DoD“ = Def
 - **DoD:** 15–20 Items, mindestens 3 spürbare Synergien.
 - *Lernfokus:* Custom Asset Loader, Trait Objects vs. Enums für Effekte, datengetriebenes Design.
 
-### M7 – Run-Management & Meta-Progression
+### M7 – Run-Management & Meta-Progression ✅ (ohne Run-Save – kommt mit serde in M6b)
 - Mehrere Etagen, Schwierigkeitskurve.
 - Run-Zusammenfassung (Zeit, Kills, Items, Seed).
-- Persistentes Profil (Freischaltungen, Meta-Währung) über `serde` + RON-Datei.
+- Persistentes Profil (Freischaltungen) als versionierte Textdatei in `%APPDATA%` (eigenes Format in `dungeon_gen::meta`, getestet).
 - Run-Save zwischen Räumen (Weiterspielen nach Neustart).
 - Seed-Eingabe im Menü für reproduzierbare Runs.
 - **DoD:** Tod ⇒ Zusammenfassung ⇒ Freischaltung wirkt im nächsten Run.

@@ -294,7 +294,7 @@ fn apply_reward(reward: Reward, inv: &mut Inventory, health: &mut Health) {
 
 // --- Belohnungen ---------------------------------------------------------------
 
-fn reward_room_clear(
+pub fn reward_room_clear(
     mut commands: Commands,
     mut messages: MessageReader<RoomCleared>,
     mut run: ResMut<Run>,
