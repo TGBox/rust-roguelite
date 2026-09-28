@@ -36,7 +36,7 @@ fn spawn_main_menu(mut commands: Commands) {
             title("Rust Roguelite"),
             button("Neuer Run", MenuAction::StartRun),
             button("Beenden", MenuAction::Quit),
-            hint("Enter: Start   ·   WASD: laufen   ·   Pfeiltasten: schießen   ·   Esc: Pause"),
+            hint("Enter: Start   ·   WASD: laufen   ·   Pfeiltasten: schießen   ·   E: Bombe   ·   Esc: Pause"),
         ],
     ));
 }

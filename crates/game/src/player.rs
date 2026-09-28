@@ -95,6 +95,10 @@ pub struct PlayerInput {
     /// Normalisiert oder null.
     pub move_dir: Vec2,
     pub shoot_dir: Option<Vec2>,
+    /// Bombe legen (Taste E). Bleibt `true`, bis ein fester Tick sie verbraucht:
+    /// Ein kurzer Tastendruck kann in ein Bild ohne festen Tick fallen – ohne
+    /// dieses „Einrasten“ ginge er verloren.
+    pub place_bomb: bool,
 }
 
 /// Läuft in der Kette aus `run.rs`, nachdem der erste Raum existiert.
@@ -161,6 +165,10 @@ fn read_input(
     mut input: ResMut<PlayerInput>,
     mut shoot_stack: Local<Vec<KeyCode>>,
 ) {
+    if keys.just_pressed(KeyCode::KeyE) {
+        input.place_bomb = true;
+    }
+
     let mut dir = Vec2::ZERO;
     if keys.pressed(KeyCode::KeyW) {
         dir.y += 1.0;

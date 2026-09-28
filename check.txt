@@ -1,0 +1,20 @@
+﻿cargo :     Checking game v0.1.0 (C:\Users\droesch\Documents\Programmiertes\rust-roguelite\crates\game)
+In Zeile:1 Zeichen:1
++ cargo check -p game 2>&1 | Out-File -Encoding utf8 check.txt
++ ~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (    Checking ga...te\crates\game):String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+warning: field `0` is never read
+   --> crates\game\src\room.rs:173:21
+    |
+173 | pub struct DoorTile(pub Direction);
+    |            -------- ^^^^^^^^^^^^^
+    |            |
+    |            field in this struct
+    |
+    = help: consider removing this field
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `game` (bin "rust-roguelite") generated 1 warning
+    Finished `dev` profile [optimized + debuginfo] target(s) in 2.99s

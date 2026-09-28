@@ -1,23 +1,21 @@
-//! HUD oben links: Herzen, darunter Münzen/Schlüssel/Bomben und die aktuellen Werte.
+//! HUD oben links: Herzen, Münzen/Schlüssel/Bomben mit Symbolen, Items und Werte.
 //!
-//! Ein Herz = zwei Hälften, jede Hälfte = 1 Lebenspunkt (wie bei Isaac).
-//! Platzhalter aus farbigen Rechtecken und Text; echte Grafiken folgen in M8.
+//! Ein Herz = zwei Lebenspunkte (wie bei Isaac): voll, halb oder leer.
+//! Die Symbole sind die Pixel-Grafiken aus `pixel_art.rs`.
 
 use bevy::prelude::*;
 
 use crate::{
+    assets::GameAssets,
     combat::Health,
+    pixel_art,
     player::{Player, PlayerStats},
     run::Run,
     states::AppState,
 };
 
-const HALF_WIDTH: f32 = 11.0;
-const HEART_HEIGHT: f32 = 20.0;
-const FULL: Color = Color::srgb(0.85, 0.15, 0.20);
-const EMPTY: Color = Color::srgb(0.20, 0.08, 0.10);
-const TEXT: Color = Color::srgb(0.90, 0.87, 0.80);
-const TEXT_DIM: Color = Color::srgb(0.60, 0.58, 0.54);
+const TEXT: Color = Color::srgb(0.92, 0.89, 0.82);
+const TEXT_DIM: Color = Color::srgb(0.62, 0.60, 0.56);
 
 pub struct HudPlugin;
 
@@ -42,8 +40,15 @@ struct HeartBar;
 #[derive(Component)]
 struct HeartSegment;
 
+#[derive(Component, Clone, Copy)]
+enum Counter {
+    Coins,
+    Keys,
+    Bombs,
+}
+
 #[derive(Component)]
-struct CounterText;
+struct ItemsText;
 
 #[derive(Component)]
 struct StatsText;
@@ -59,7 +64,22 @@ fn hud_text(size: f32, color: Color) -> impl Bundle {
     )
 }
 
-fn spawn_hud(mut commands: Commands) {
+/// Pixel-Symbol als UI-Bild in Originalproportionen.
+fn icon(image: &Handle<Image>, rows: &[&str]) -> impl Bundle {
+    let size = pixel_art::display_size(rows);
+    (
+        ImageNode::new(image.clone()),
+        Node {
+            width: px(size.x),
+            height: px(size.y),
+            margin: UiRect::left(px(10)),
+            ..default()
+        },
+    )
+}
+
+fn spawn_hud(mut commands: Commands, assets: Res<GameAssets>) {
+    let s = &assets.sprites;
     commands.spawn((
         Name::new("Hud"),
         DespawnOnExit(AppState::InGame),
@@ -75,11 +95,26 @@ fn spawn_hud(mut commands: Commands) {
             (
                 HeartBar,
                 Node {
-                    column_gap: px(2),
+                    column_gap: px(3),
                     ..default()
                 }
             ),
-            (CounterText, hud_text(18.0, TEXT)),
+            (
+                Node {
+                    align_items: AlignItems::Center,
+                    column_gap: px(4),
+                    ..default()
+                },
+                children![
+                    icon(&s.coin, pixel_art::COIN),
+                    (Counter::Coins, hud_text(18.0, TEXT)),
+                    icon(&s.key, pixel_art::KEY),
+                    (Counter::Keys, hud_text(18.0, TEXT)),
+                    icon(&s.bomb, pixel_art::BOMB),
+                    (Counter::Bombs, hud_text(18.0, TEXT)),
+                ]
+            ),
+            (ItemsText, hud_text(14.0, TEXT_DIM)),
             (StatsText, hud_text(14.0, TEXT_DIM)),
         ],
     ));
@@ -89,6 +124,7 @@ fn spawn_hud(mut commands: Commands) {
 /// (beim ersten Mal zählt das Hinzufügen der Komponente als Änderung).
 fn update_hearts(
     mut commands: Commands,
+    assets: Res<GameAssets>,
     player: Query<&Health, (With<Player>, Changed<Health>)>,
     bar: Single<Entity, With<HeartBar>>,
     old: Query<Entity, With<HeartSegment>>,
@@ -99,36 +135,52 @@ fn update_hearts(
     for e in &old {
         commands.entity(e).despawn();
     }
-    for i in 0..health.max.round() as i32 {
-        let filled = (i as f32) < health.current;
-        // Nach jedem vollen Herz (2 Hälften) etwas Abstand.
-        let gap = if i % 2 == 1 { 6.0 } else { 0.0 };
+    let s = &assets.sprites;
+    let size = pixel_art::display_size(pixel_art::HEART);
+    let hearts = (health.max / 2.0).ceil() as i32;
+    for i in 0..hearts {
+        // Wie viele Lebenspunkte entfallen auf dieses Herz? (2 = voll)
+        let fill = health.current - (i * 2) as f32;
+        let image = if fill >= 2.0 {
+            &s.heart_full
+        } else if fill >= 1.0 {
+            &s.heart_half
+        } else {
+            &s.heart_empty
+        };
         commands.spawn((
             HeartSegment,
             ChildOf(*bar),
+            ImageNode::new(image.clone()),
             Node {
-                width: px(HALF_WIDTH),
-                height: px(HEART_HEIGHT),
-                margin: UiRect::right(px(gap)),
+                width: px(size.x),
+                height: px(size.y),
                 ..default()
             },
-            BackgroundColor(if filled { FULL } else { EMPTY }),
         ));
     }
 }
 
-fn update_counters(run: Res<Run>, mut text: Single<&mut Text, With<CounterText>>) {
+fn update_counters(
+    run: Res<Run>,
+    mut counters: Query<(&Counter, &mut Text)>,
+    mut items: Single<&mut Text, (With<ItemsText>, Without<Counter>)>,
+) {
     let inv = &run.inventory;
-    let items = if inv.items.is_empty() {
+    for (counter, mut text) in &mut counters {
+        let value = match counter {
+            Counter::Coins => inv.coins,
+            Counter::Keys => inv.keys,
+            Counter::Bombs => inv.bombs,
+        };
+        text.0 = format!("{value:02}");
+    }
+    let names: Vec<&str> = inv.items.iter().map(|i| i.name).collect();
+    items.0 = if names.is_empty() {
         String::new()
     } else {
-        let names: Vec<&str> = inv.items.iter().map(|i| i.name).collect();
-        format!("\nItems: {}", names.join(", "))
+        format!("Items: {}", names.join(", "))
     };
-    text.0 = format!(
-        "Münzen {}   Schlüssel {}   Bomben {}{items}",
-        inv.coins, inv.keys, inv.bombs
-    );
 }
 
 fn update_stats(

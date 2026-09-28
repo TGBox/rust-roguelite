@@ -6,7 +6,10 @@
 
 use bevy::prelude::*;
 
-use crate::states::{AppState, InGameState};
+use crate::{
+    assets::GameAssets,
+    states::{AppState, InGameState},
+};
 
 mod hud;
 mod menus;
@@ -17,7 +20,7 @@ pub struct UiPlugin;
 impl Plugin for UiPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins((menus::MenusPlugin, minimap::MinimapPlugin, hud::HudPlugin))
-            .add_systems(Update, (button_visuals, button_actions));
+            .add_systems(Update, (apply_game_font, button_visuals, button_actions));
     }
 }
 
@@ -109,6 +112,15 @@ fn button(label: &str, action: MenuAction) -> impl Bundle {
 }
 
 // --- Systeme ---------------------------------------------------------------
+
+/// Gibt jedem neu erzeugten Text die Spielschrift. So muss kein Spawn-Code
+/// an die Schrift denken, und `button()`/`title()` bleiben ohne Parameter.
+/// Die eingebaute Bevy-Schrift ist nur ein kleiner Ausschnitt ohne Umlaute.
+fn apply_game_font(assets: Res<GameAssets>, mut texts: Query<&mut TextFont, Added<TextFont>>) {
+    for mut font in &mut texts {
+        font.font = assets.font.clone().into();
+    }
+}
 
 /// `Changed<Interaction>`: Nur Buttons, deren Zustand sich seit dem letzten
 /// Durchlauf geändert hat – nicht jedes Bild alle Buttons.

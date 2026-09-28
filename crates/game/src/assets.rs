@@ -9,7 +9,7 @@ use bevy::prelude::*;
 use crate::{
     TILE_SIZE,
     enemy::{BOSS_HALF_TILES, ENEMY_HALF_TILES},
-    inventory::{ITEM_HALF_TILES, PICKUP_HALF_TILES},
+    pixel_art,
     player::PLAYER_RADIUS_TILES,
     projectile::TEAR_RADIUS_TILES,
 };
@@ -33,6 +33,8 @@ pub struct GameAssets {
     pub pit: Handle<ColorMaterial>,
     pub door_open: Handle<ColorMaterial>,
     pub door_closed: Handle<ColorMaterial>,
+    /// Tür zu einem verschlossenen Raum (Schlüssel nötig).
+    pub door_keyed: Handle<ColorMaterial>,
     pub player_mesh: Handle<Mesh>,
     pub player_material: Handle<ColorMaterial>,
     pub player_dead_material: Handle<ColorMaterial>,
@@ -47,14 +49,24 @@ pub struct GameAssets {
     pub enemy_shot_material: Handle<ColorMaterial>,
     /// Kurzes weißes Aufblitzen bei Treffern.
     pub flash_material: Handle<ColorMaterial>,
-    pub pickup_mesh: Handle<Mesh>,
-    pub item_mesh: Handle<Mesh>,
-    pub half_heart_material: Handle<ColorMaterial>,
-    pub heart_material: Handle<ColorMaterial>,
-    pub coin_material: Handle<ColorMaterial>,
-    pub key_material: Handle<ColorMaterial>,
-    pub bomb_material: Handle<ColorMaterial>,
-    pub item_material: Handle<ColorMaterial>,
+    /// Schrift mit vollem Zeichensatz (Umlaute, –, ×, ✔). Wird allen Texten
+    /// automatisch zugewiesen, siehe `ui::apply_game_font`.
+    pub font: Handle<Font>,
+    /// Explosions-Blitz einer Bombe (Kreis, wird beim Anzeigen skaliert).
+    pub explosion_mesh: Handle<Mesh>,
+    pub explosion_material: Handle<ColorMaterial>,
+    pub sprites: Sprites,
+}
+
+/// Pixel-Grafiken aus `pixel_art.rs`.
+pub struct Sprites {
+    pub heart_full: Handle<Image>,
+    pub heart_half: Handle<Image>,
+    pub heart_empty: Handle<Image>,
+    pub coin: Handle<Image>,
+    pub key: Handle<Image>,
+    pub bomb: Handle<Image>,
+    pub item: Handle<Image>,
 }
 
 /// `FromWorld` statt `Default`: Wir brauchen Zugriff auf andere Ressourcen
@@ -63,7 +75,7 @@ impl FromWorld for GameAssets {
     fn from_world(world: &mut World) -> Self {
         // Eigener Block, damit der mutable Borrow auf `Assets<Mesh>` endet,
         // bevor wir `Assets<ColorMaterial>` ausleihen.
-        let (tile_mesh, player_mesh, tear_mesh, enemy_mesh, boss_mesh, pickup_mesh, item_mesh) = {
+        let (tile_mesh, player_mesh, tear_mesh, enemy_mesh, boss_mesh, explosion_mesh) = {
             let mut meshes = world.resource_mut::<Assets<Mesh>>();
             (
                 // 1 px kleiner als die Kachel: ergibt ein dezentes Raster.
@@ -76,13 +88,23 @@ impl FromWorld for GameAssets {
                 meshes.add(Rectangle::from_size(Vec2::splat(
                     BOSS_HALF_TILES * 2.0 * TILE_SIZE,
                 ))),
-                meshes.add(Circle::new(PICKUP_HALF_TILES * TILE_SIZE)),
-                // Raute: ein um 45° gedrehtes Quadrat als Item-Symbol.
-                meshes.add(Rhombus::new(
-                    ITEM_HALF_TILES * 2.0 * TILE_SIZE,
-                    ITEM_HALF_TILES * 2.0 * TILE_SIZE,
-                )),
+                meshes.add(Circle::new(crate::bomb::BLAST_RADIUS_TILES * TILE_SIZE)),
             )
+        };
+
+        let font = world.resource::<AssetServer>().load("fonts/DejaVuSans.ttf");
+        let sprites = {
+            let mut images = world.resource_mut::<Assets<Image>>();
+            use pixel_art::*;
+            Sprites {
+                heart_full: images.add(heart_full()),
+                heart_half: images.add(heart_half()),
+                heart_empty: images.add(heart_empty()),
+                coin: images.add(image_from_ascii(COIN, COIN_PALETTE)),
+                key: images.add(image_from_ascii(KEY, KEY_PALETTE)),
+                bomb: images.add(image_from_ascii(BOMB, BOMB_PALETTE)),
+                item: images.add(image_from_ascii(ITEM, ITEM_PALETTE)),
+            }
         };
 
         let mut materials = world.resource_mut::<Assets<ColorMaterial>>();
@@ -94,6 +116,7 @@ impl FromWorld for GameAssets {
             pit: materials.add(Color::srgb(0.02, 0.02, 0.03)),
             door_open: materials.add(Color::srgb(0.22, 0.18, 0.12)),
             door_closed: materials.add(Color::srgb(0.55, 0.35, 0.15)),
+            door_keyed: materials.add(Color::srgb(0.85, 0.70, 0.20)),
             player_mesh,
             player_material: materials.add(Color::srgb(0.85, 0.75, 0.55)),
             player_dead_material: materials.add(Color::srgb(0.55, 0.12, 0.12)),
@@ -107,14 +130,10 @@ impl FromWorld for GameAssets {
             boss_material: materials.add(Color::srgb(0.60, 0.15, 0.50)),
             enemy_shot_material: materials.add(Color::srgb(0.95, 0.35, 0.30)),
             flash_material: materials.add(Color::srgb(1.0, 1.0, 1.0)),
-            pickup_mesh,
-            item_mesh,
-            half_heart_material: materials.add(Color::srgb(0.95, 0.45, 0.50)),
-            heart_material: materials.add(Color::srgb(0.90, 0.10, 0.15)),
-            coin_material: materials.add(Color::srgb(0.95, 0.80, 0.20)),
-            key_material: materials.add(Color::srgb(0.75, 0.78, 0.85)),
-            bomb_material: materials.add(Color::srgb(0.12, 0.12, 0.14)),
-            item_material: materials.add(Color::srgb(0.40, 0.90, 0.95)),
+            font,
+            sprites,
+            explosion_mesh,
+            explosion_material: materials.add(Color::srgb(1.0, 0.65, 0.20)),
         }
     }
 }

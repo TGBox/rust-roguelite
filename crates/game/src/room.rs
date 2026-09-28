@@ -7,13 +7,21 @@
 
 use bevy::prelude::*;
 use dungeon_gen::{
-    GridPos, RoomLayout, Tile,
+    Direction, GridPos, RoomLayout, Tile,
     floor::START_POS,
-    room::{ROOM_HEIGHT, ROOM_WIDTH},
+    loot::requires_key,
+    room::{ROOM_HEIGHT, ROOM_WIDTH, door_direction, door_pos},
 };
 
 use crate::{
-    TILE_SIZE, assets::GameAssets, enemy::Enemy, physics::BodyKind, run::Run, schedule::GameSet,
+    TILE_SIZE,
+    assets::GameAssets,
+    enemy::Enemy,
+    inventory::Toast,
+    physics::{BodyKind, Position},
+    player::Player,
+    run::Run,
+    schedule::GameSet,
     states::AppState,
 };
 
@@ -29,7 +37,10 @@ impl Plugin for RoomPlugin {
     fn build(&self, app: &mut App) {
         app.add_message::<RoomCleared>()
             .add_systems(OnExit(AppState::InGame), leave_room)
-            .add_systems(FixedUpdate, unlock_when_cleared.in_set(GameSet::Cleanup))
+            .add_systems(
+                FixedUpdate,
+                (unlock_when_cleared, open_key_doors).in_set(GameSet::Cleanup),
+            )
             // Nur wenn sich `CurrentRoom` geändert hat (z. B. Türen auf/zu).
             .add_systems(
                 Update,
@@ -47,9 +58,49 @@ pub struct CurrentRoom {
     pub layout: RoomLayout,
     /// Türen zu, solange Gegner im Raum sind.
     pub locked: bool,
+    /// Türen, hinter denen ein verschlossener Raum liegt (Schlüssel nötig).
+    pub key_locked: Vec<Direction>,
+    /// Zählt Änderungen am Layout (z. B. gesprengte Felsen), damit abgeleitete
+    /// Daten wie das Flowfield wissen, dass sie neu berechnet werden müssen.
+    pub revision: u32,
 }
 
 impl CurrentRoom {
+    /// Raum `pos` betreten: Layout (inkl. gesprengter Felsen) und Schlüsseltüren
+    /// aus dem Run übernehmen.
+    pub fn enter(run: &Run, pos: GridPos) -> Self {
+        let layout = run
+            .layout_overrides
+            .get(&pos)
+            .cloned()
+            .or_else(|| run.floor.room_layout(pos))
+            .expect("Raum existiert auf der Etage");
+        let key_locked = run
+            .floor
+            .doors(pos)
+            .filter(|&dir| {
+                let neighbor = pos.neighbor(dir);
+                let needs_key = run
+                    .floor
+                    .get(neighbor)
+                    .is_some_and(|r| requires_key(r.kind, run.floor.depth));
+                needs_key && !run.unlocked.contains(&neighbor)
+            })
+            .collect();
+        Self {
+            pos,
+            layout,
+            locked: false,
+            key_locked,
+            revision: 0,
+        }
+    }
+
+    /// Ist diese Kachel eine Tür, die einen Schlüssel braucht?
+    pub fn is_key_locked(&self, pos: GridPos) -> bool {
+        door_direction(pos).is_some_and(|d| self.key_locked.contains(&d))
+    }
+
     /// Weltposition der Raummitte.
     pub fn origin(&self) -> Vec2 {
         room_origin(self.pos)
@@ -91,8 +142,9 @@ impl CurrentRoom {
     pub fn blocks(&self, pos: GridPos, kind: BodyKind) -> bool {
         match kind {
             BodyKind::Walker => {
+                let is_door = self.layout.get(pos) == Some(Tile::Door);
                 self.layout.blocks_movement(pos)
-                    || (self.locked && self.layout.get(pos) == Some(Tile::Door))
+                    || (is_door && (self.locked || self.is_key_locked(pos)))
             }
             BodyKind::Projectile => self.layout.blocks_projectiles(pos),
         }
@@ -113,10 +165,12 @@ pub fn room_origin(pos: GridPos) -> Vec2 {
 #[derive(Component, Debug)]
 pub struct RoomTile {
     pub room: GridPos,
+    pub tile: GridPos,
 }
 
+/// Tür-Kachel mit der Wand, in der sie sitzt.
 #[derive(Component)]
-pub struct DoorTile;
+pub struct DoorTile(pub Direction);
 
 /// Gehört zum aktuellen Raum und verschwindet beim Raumwechsel
 /// (Projektile, Gegner). Kacheln werden separat über `RoomTile` verwaltet.
@@ -132,19 +186,21 @@ pub fn spawn_room_tiles(commands: &mut Commands, room: &CurrentRoom, assets: &Ga
             Tile::Wall => &assets.wall,
             Tile::Rock => &assets.rock,
             Tile::Pit => &assets.pit,
-            Tile::Door if room.locked => &assets.door_closed,
-            Tile::Door => &assets.door_open,
+            Tile::Door => door_material(room, pos, assets),
         };
         let mut entity = commands.spawn((
-            RoomTile { room: room.pos },
+            RoomTile {
+                room: room.pos,
+                tile: pos,
+            },
             DespawnOnExit(AppState::InGame),
             Mesh2d(assets.tile_mesh.clone()),
             MeshMaterial2d(material.clone()),
             // z = 0: Kacheln liegen unter allem anderen.
             Transform::from_translation(room.tile_center(pos).extend(0.0)),
         ));
-        if tile == Tile::Door {
-            entity.insert(DoorTile);
+        if let Some(dir) = door_direction(pos).filter(|_| tile == Tile::Door) {
+            entity.insert(DoorTile(dir));
         }
     }
 }
@@ -152,12 +208,7 @@ pub fn spawn_room_tiles(commands: &mut Commands, room: &CurrentRoom, assets: &Ga
 /// Erster Raum eines Runs. Läuft in der Kette aus `run.rs` nach `start_run`.
 pub fn enter_first_room(mut commands: Commands, mut run: ResMut<Run>, assets: Res<GameAssets>) {
     let pos = run.floor.start();
-    let layout = run.floor.room_layout(pos).expect("Startraum existiert");
-    let room = CurrentRoom {
-        pos,
-        layout,
-        locked: false,
-    };
+    let room = CurrentRoom::enter(&run, pos);
     run.visited.insert(pos);
     run.cleared.insert(pos);
     spawn_room_tiles(&mut commands, &room, &assets);
@@ -190,21 +241,66 @@ pub fn unlock_when_cleared(
     }
 }
 
+/// Farbe einer Tür: zu (Gegner), Schlüsseltür oder offen.
+fn door_material<'a>(
+    room: &CurrentRoom,
+    pos: GridPos,
+    assets: &'a GameAssets,
+) -> &'a Handle<ColorMaterial> {
+    if room.locked {
+        &assets.door_closed
+    } else if room.is_key_locked(pos) {
+        &assets.door_keyed
+    } else {
+        &assets.door_open
+    }
+}
+
 fn update_door_visuals(
     room: Res<CurrentRoom>,
     assets: Res<GameAssets>,
     mut doors: Query<(&RoomTile, &mut MeshMaterial2d<ColorMaterial>), With<DoorTile>>,
 ) {
-    let material = if room.locked {
-        &assets.door_closed
-    } else {
-        &assets.door_open
-    };
     for (tile, mut mat) in &mut doors {
         if tile.room == room.pos {
-            mat.0 = material.clone();
+            mat.0 = door_material(&room, tile.tile, &assets).clone();
         }
     }
+}
+
+/// Steht der Spieler an einer Schlüsseltür, wird sie mit einem Schlüssel geöffnet.
+/// Ohne Schlüssel erscheint einmal ein Hinweis (nicht jeden Tick erneut).
+fn open_key_doors(
+    mut room: ResMut<CurrentRoom>,
+    mut run: ResMut<Run>,
+    mut toast: ResMut<Toast>,
+    player: Single<&Position, With<Player>>,
+    mut hinted: Local<bool>,
+) {
+    if room.key_locked.is_empty() {
+        return;
+    }
+    // Spielermitte liegt an der Tür an, wenn sie weniger als ~1 Kachel entfernt ist.
+    let touching = room.key_locked.iter().copied().find(|&dir| {
+        let door = room.tile_center(door_pos(dir));
+        player.0.distance(door) < 0.95 * TILE_SIZE
+    });
+    let Some(dir) = touching else {
+        *hinted = false;
+        return;
+    };
+    if run.inventory.keys == 0 {
+        if !*hinted {
+            toast.show("Verschlossen – du brauchst einen Schlüssel".to_string());
+            *hinted = true;
+        }
+        return;
+    }
+    run.inventory.keys -= 1;
+    let neighbor = room.pos.neighbor(dir);
+    run.unlocked.insert(neighbor);
+    room.key_locked.retain(|&d| d != dir);
+    toast.show("Tür aufgeschlossen".to_string());
 }
 
 #[cfg(test)]
@@ -216,6 +312,8 @@ mod tests {
             pos,
             layout: RoomLayout::empty(),
             locked: false,
+            key_locked: Vec::new(),
+            revision: 0,
         }
     }
 
@@ -237,6 +335,18 @@ mod tests {
         let world = Vec2::new(-1234.5, 842.25);
         let back = room.tile_space_to_world(room.world_to_tile_space(world));
         assert!((back - world).length() < 1e-3);
+    }
+
+    #[test]
+    fn key_locked_doors_block_until_unlocked() {
+        use dungeon_gen::{Direction, room::door_pos};
+        let mut room = room_at(START_POS);
+        room.layout = RoomLayout::empty().with_doors([Direction::East, Direction::West]);
+        room.key_locked = vec![Direction::East];
+        assert!(room.blocks(door_pos(Direction::East), BodyKind::Walker));
+        assert!(!room.blocks(door_pos(Direction::West), BodyKind::Walker));
+        room.key_locked.clear();
+        assert!(!room.blocks(door_pos(Direction::East), BodyKind::Walker));
     }
 
     #[test]

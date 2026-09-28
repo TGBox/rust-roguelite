@@ -4,12 +4,14 @@
 use bevy::prelude::*;
 
 mod assets;
+mod bomb;
 mod camera;
 mod combat;
 mod debug;
 mod enemy;
 mod inventory;
 mod physics;
+mod pixel_art;
 mod player;
 mod projectile;
 mod room;
@@ -59,6 +61,7 @@ fn main() {
         .add_plugins((
             transition::TransitionPlugin,
             inventory::InventoryPlugin,
+            bomb::BombPlugin,
             ui::UiPlugin,
             debug::DebugPlugin,
         ))

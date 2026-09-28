@@ -92,17 +92,8 @@ fn begin_transition(
 ) {
     let dir = exit.0;
     let new_pos = room.pos.neighbor(dir);
-    let layout = run
-        .floor
-        .room_layout(new_pos)
-        .expect("Nachbarraum existiert (geprüft in detect_door_exit)");
-
     // Türen bleiben offen, bis der Schwenk vorbei ist und Gegner da sind.
-    *room = CurrentRoom {
-        pos: new_pos,
-        layout,
-        locked: false,
-    };
+    *room = CurrentRoom::enter(&run, new_pos);
     run.visited.insert(new_pos);
     spawn_room_tiles(&mut commands, &room, &assets);
 

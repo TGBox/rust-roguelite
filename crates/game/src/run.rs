@@ -7,7 +7,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use bevy::prelude::*;
 use dungeon_gen::{
-    Floor, GridPos, Rng, RunSeed, floor,
+    Floor, GridPos, Rng, RoomLayout, RunSeed, floor,
     items::{ItemDef, ItemPools},
     loot::{Loot, START_BOMBS, START_KEYS},
 };
@@ -43,6 +43,10 @@ pub struct Run {
     pub visited: BTreeSet<GridPos>,
     /// Räume ohne verbleibende Gegner.
     pub cleared: BTreeSet<GridPos>,
+    /// Verschlossene Räume, die mit einem Schlüssel geöffnet wurden.
+    pub unlocked: BTreeSet<GridPos>,
+    /// Veränderte Layouts (gesprengte Felsen) – bleiben beim Zurückkommen erhalten.
+    pub layout_overrides: BTreeMap<GridPos, RoomLayout>,
     pub inventory: Inventory,
     /// Noch nicht vergebene Items.
     pub pools: ItemPools,
@@ -81,6 +85,8 @@ fn start_run(mut commands: Commands) {
         floor,
         visited: BTreeSet::new(),
         cleared: BTreeSet::new(),
+        unlocked: BTreeSet::new(),
+        layout_overrides: BTreeMap::new(),
         inventory: Inventory {
             keys: START_KEYS,
             bombs: START_BOMBS,

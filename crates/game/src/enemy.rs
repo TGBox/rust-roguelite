@@ -212,6 +212,8 @@ pub fn spawn_room_enemies(
 #[derive(Resource)]
 pub struct PlayerFlow {
     room: GridPos,
+    /// Layout-Stand, für den das Feld berechnet wurde (Bomben ändern Räume).
+    revision: u32,
     field: FlowField,
 }
 
@@ -222,13 +224,16 @@ fn update_flow_field(
     player: Single<&Position, With<Player>>,
 ) {
     let target = room.tile_at(player.0);
-    let up_to_date = flow.is_some_and(|f| f.room == room.pos && f.field.target() == target);
+    let up_to_date = flow.is_some_and(|f| {
+        f.room == room.pos && f.revision == room.revision && f.field.target() == target
+    });
     if up_to_date {
         return;
     }
     let field = FlowField::compute(target, |p| !room.blocks(p, BodyKind::Walker));
     commands.insert_resource(PlayerFlow {
         room: room.pos,
+        revision: room.revision,
         field,
     });
 }

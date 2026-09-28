@@ -9,7 +9,7 @@ use bevy::prelude::*;
 use dungeon_gen::{
     RoomKind,
     items::{self, ItemDef, Pool, Reward},
-    loot::{self, Loot, PickupKind},
+    loot::{self, Loot, PickupKind, Ware},
     room::CENTER,
 };
 
@@ -18,6 +18,7 @@ use crate::{
     assets::GameAssets,
     combat::{EnemyKilled, Health},
     physics::{Body, Position},
+    pixel_art,
     player::Player,
     room::{CurrentRoom, RoomCleared, RoomScoped, unlock_when_cleared},
     run::{Inventory, Run},
@@ -27,8 +28,6 @@ use crate::{
 
 /// Halbe Kantenlänge eines Pickups (Kacheln) – für die Einsammel-Prüfung.
 pub const PICKUP_HALF_TILES: f32 = 0.25;
-/// Halbe Kantenlänge eines Item-Sockels (Kacheln).
-pub const ITEM_HALF_TILES: f32 = 0.3;
 const MAX_COINS: u32 = 99;
 const MAX_KEYS_BOMBS: u32 = 99;
 const TOAST_SECS: f32 = 3.0;
@@ -76,6 +75,18 @@ pub fn prepare_room_loot(run: &mut Run, room: &CurrentRoom) {
         let item = run.pools.draw(Pool::Treasure, &mut run.item_rng);
         add_loot(run, room, Loot::Item(item));
     }
+    if kind == RoomKind::Shop {
+        // Das Angebot kommt aus einem eigenen Stream pro Etage.
+        let mut rng = loot::room_rng(run.seed, "shop", run.floor.depth, room.pos);
+        let stock = loot::shop_stock(&mut run.pools, &mut rng);
+        let entries = run.loot.entry(room.pos).or_default();
+        // Waren in einer Reihe quer durch die Raummitte.
+        for (i, ware) in stock.into_iter().enumerate() {
+            let tile = dungeon_gen::GridPos::new(4 + 2 * i as i32, CENTER.y);
+            let price = loot::price(&ware);
+            entries.push((tile, Loot::ForSale { ware, price }));
+        }
+    }
 }
 
 /// Legt Beute auf die nächste freie Kachel nahe der Raummitte.
@@ -105,29 +116,64 @@ fn spawn_loot_entity(
     loot: &Loot,
     assets: &GameAssets,
 ) {
-    let (mesh, material) = match loot {
-        Loot::Pickup(kind) => (&assets.pickup_mesh, pickup_material(*kind, assets)),
-        Loot::Item(_) | Loot::ForSale { .. } => (&assets.item_mesh, &assets.item_material),
-    };
-    commands.spawn((
-        Name::new(format!("Loot {loot:?}")),
+    let (image, rows) = loot_sprite(loot, assets);
+    let mut entity = commands.spawn((
+        Name::new(format!("Loot {}", loot_label(loot))),
         LootMarker { tile },
         RoomScoped,
         DespawnOnExit(AppState::InGame),
-        Mesh2d(mesh.clone()),
-        MeshMaterial2d(material.clone()),
+        Sprite {
+            image: image.clone(),
+            custom_size: Some(pixel_art::display_size(rows)),
+            ..default()
+        },
         // z = 3: über dem Boden, unter Figuren.
         Transform::from_translation(room.tile_center(tile).extend(3.0)),
     ));
+    if let Loot::ForSale { price, .. } = loot {
+        // Preisschild als Kind-Entity: bewegt und verschwindet mit der Ware.
+        entity.with_child((
+            Text2d::new(format!("{price}")),
+            TextFont {
+                font_size: FontSize::Px(14.0),
+                ..default()
+            },
+            TextColor(Color::srgb(0.98, 0.85, 0.30)),
+            Transform::from_xyz(0.0, -22.0, 1.0),
+        ));
+    }
 }
 
-fn pickup_material(kind: PickupKind, assets: &GameAssets) -> &Handle<ColorMaterial> {
-    match kind {
-        PickupKind::HalfHeart => &assets.half_heart_material,
-        PickupKind::Heart => &assets.heart_material,
-        PickupKind::Coin => &assets.coin_material,
-        PickupKind::Key => &assets.key_material,
-        PickupKind::Bomb => &assets.bomb_material,
+/// Bild und Pixelkarte (für die Größe) zu einer Beute.
+fn loot_sprite<'a>(
+    loot: &Loot,
+    assets: &'a GameAssets,
+) -> (&'a Handle<Image>, &'static [&'static str]) {
+    let s = &assets.sprites;
+    match loot {
+        Loot::Pickup(PickupKind::HalfHeart) => (&s.heart_half, pixel_art::HEART),
+        Loot::Pickup(PickupKind::Heart) => (&s.heart_full, pixel_art::HEART),
+        Loot::Pickup(PickupKind::Coin) => (&s.coin, pixel_art::COIN),
+        Loot::Pickup(PickupKind::Key) => (&s.key, pixel_art::KEY),
+        Loot::Pickup(PickupKind::Bomb) => (&s.bomb, pixel_art::BOMB),
+        Loot::Item(_)
+        | Loot::ForSale {
+            ware: Ware::Item(_),
+            ..
+        } => (&s.item, pixel_art::ITEM),
+        Loot::ForSale {
+            ware: Ware::Pickup(kind),
+            ..
+        } => loot_sprite(&Loot::Pickup(*kind), assets),
+    }
+}
+
+/// Kurzer Name für den Entity-Namen (statt des kompletten `Debug`-Ausdrucks).
+fn loot_label(loot: &Loot) -> String {
+    match loot {
+        Loot::Pickup(kind) => format!("{kind:?}"),
+        Loot::Item(item) => item.id.to_string(),
+        Loot::ForSale { ware, price } => format!("ForSale {ware:?} {price}"),
     }
 }
 
@@ -140,6 +186,9 @@ fn collect_loot(
     mut toast: ResMut<Toast>,
     player: Single<(&Position, &Body, &mut Health), With<Player>>,
     loot_entities: Query<(Entity, &Transform, &LootMarker)>,
+    // Kachel, für die zuletzt „zu teuer“ angezeigt wurde – damit der Hinweis
+    // nicht jeden Tick neu erscheint, solange man davorsteht.
+    mut denied: Local<Option<dungeon_gen::GridPos>>,
 ) {
     let (player_pos, player_body, mut health) = player.into_inner();
     // Einmal umleihen: Ab hier ist `run` ein normales `&mut Run`, und wir dürfen
@@ -147,6 +196,7 @@ fn collect_loot(
     // Direkt über `ResMut` ginge das nicht, weil jeder Feldzugriff dort über
     // `DerefMut` den *ganzen* `ResMut` ausleiht.
     let run = &mut *run;
+    let mut touching_denied = None;
 
     for (entity, transform, marker) in &loot_entities {
         let reach = player_body.half_size + Vec2::splat(PICKUP_HALF_TILES * TILE_SIZE);
@@ -167,14 +217,34 @@ fn collect_loot(
                 take_item(*item, &mut run.inventory, &mut health, &mut toast);
                 true
             }
-            // Kaufen kommt in M6a-2.
-            Loot::ForSale { .. } => false,
+            Loot::ForSale { ware, price } => {
+                if run.inventory.coins < *price {
+                    touching_denied = Some(marker.tile);
+                    if *denied != Some(marker.tile) {
+                        toast.show(format!("Zu teuer – kostet {price} Münzen"));
+                    }
+                    false
+                } else {
+                    let bought = match ware {
+                        Ware::Pickup(kind) => pick_up(*kind, &mut run.inventory, &mut health),
+                        Ware::Item(item) => {
+                            take_item(*item, &mut run.inventory, &mut health, &mut toast);
+                            true
+                        }
+                    };
+                    if bought {
+                        run.inventory.coins -= *price;
+                    }
+                    bought
+                }
+            }
         };
         if taken {
             entries.remove(index);
             commands.entity(entity).despawn();
         }
     }
+    *denied = touching_denied;
 }
 
 /// Gibt `false` zurück, wenn das Pickup liegen bleibt (z. B. Herz bei vollem Leben).
