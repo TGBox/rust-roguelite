@@ -314,7 +314,14 @@ fn update_counters(
             Counter::Coins => format!("{:02}", inv.coins),
             Counter::Keys => format!("{:02}", inv.keys),
             Counter::Bombs => format!("{:02}", inv.bombs),
-            Counter::Depth => format!("Etage {}/{}", run.floor.depth, dungeon_gen::meta::MAX_DEPTH),
+            Counter::Depth => {
+                let depth = format!("Etage {}/{}", run.floor.depth, dungeon_gen::meta::MAX_DEPTH);
+                // Fluch oder Segen der Etage dauerhaft sichtbar halten.
+                match run.modifier() {
+                    Some(modifier) => format!("{depth}   ·   {}", modifier.label()),
+                    None => depth,
+                }
+            }
         };
     }
     // Eigene Variable: `names` leiht sich Strings aus `owned`, das deshalb

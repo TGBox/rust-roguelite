@@ -6,6 +6,7 @@
 
 pub mod characters;
 pub mod collision;
+pub mod curses;
 pub mod floor;
 pub mod grid;
 pub mod items;
@@ -19,6 +20,7 @@ pub mod stats;
 pub mod templates;
 
 pub use characters::CharacterId;
+pub use curses::FloorModifier;
 pub use floor::{Floor, RoomInfo, RoomKind};
 pub use grid::{Direction, GridPos};
 pub use rng::{Rng, RunSeed};

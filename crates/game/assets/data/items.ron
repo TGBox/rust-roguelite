@@ -1,7 +1,7 @@
 // Item-Definitionen. Mit `cargo run --features dev` werden Änderungen
 // beim Speichern sofort ins laufende Spiel übernommen.
 (
-    version: 2,
+    version: 3,
     items: [
         (
             id: "onion",
@@ -557,6 +557,89 @@
             ],
         ),
         (
+            id: "guardian_orb",
+            name: "Wächterkugel",
+            description: "Begleiter: Kugel umkreist dich, schadet und fängt Schüsse ab",
+            pools: [
+                Treasure,
+                Shop,
+            ],
+            price: 20,
+            effects: [
+                Companion(
+                    kind: Orbital,
+                    damage: 2.0,
+                ),
+            ],
+        ),
+        (
+            id: "twin_moons",
+            name: "Zwillingsmonde",
+            description: "Begleiter: zwei schwächere Kugeln umkreisen dich",
+            pools: [
+                Treasure,
+                Boss,
+            ],
+            price: 20,
+            effects: [
+                Companion(
+                    kind: Orbital,
+                    damage: 1.5,
+                ),
+                Companion(
+                    kind: Orbital,
+                    damage: 1.5,
+                ),
+            ],
+        ),
+        (
+            id: "little_brother",
+            name: "Kleiner Bruder",
+            description: "Begleiter: schießt mit, wenn du schießt",
+            pools: [
+                Treasure,
+                Shop,
+            ],
+            price: 20,
+            effects: [
+                Companion(
+                    kind: Gunner,
+                    damage: 1.5,
+                ),
+            ],
+        ),
+        (
+            id: "wisp",
+            name: "Irrlicht",
+            description: "Begleiter: schießt von selbst auf den nächsten Gegner",
+            pools: [
+                Treasure,
+            ],
+            price: 20,
+            effects: [
+                Companion(
+                    kind: Seeker,
+                    damage: 1.0,
+                ),
+            ],
+        ),
+        (
+            id: "ghost_hound",
+            name: "Geisterhund",
+            description: "Begleiter: jagt Gegner in deiner Nähe und beißt zu",
+            pools: [
+                Treasure,
+                Boss,
+            ],
+            price: 20,
+            effects: [
+                Companion(
+                    kind: Hound,
+                    damage: 3.0,
+                ),
+            ],
+        ),
+        (
             id: "breakfast",
             name: "Frühstück",
             description: "+1 Herz",
@@ -663,6 +746,29 @@
                     stat: Damage,
                     op: Mul(1.5),
                 )),
+            ],
+        ),
+        (
+            name: "Sternbild",
+            description: "Drei Kugeln im Orbit: Begleiter-Schaden +50 %",
+            requires: [
+                "guardian_orb",
+                "twin_moons",
+            ],
+            effects: [
+                CompanionPower(1.5),
+            ],
+        ),
+        (
+            name: "Rudel",
+            description: "Bruder, Irrlicht und Hund: Begleiter-Schaden ×2",
+            requires: [
+                "little_brother",
+                "wisp",
+                "ghost_hound",
+            ],
+            effects: [
+                CompanionPower(2.0),
             ],
         ),
     ],

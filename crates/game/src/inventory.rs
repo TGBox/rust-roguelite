@@ -164,6 +164,7 @@ pub fn spawn_loot_entity(
     if let Loot::ForSale { price, .. } = loot {
         // Preisschild als Kind-Entity: bewegt und verschwindet mit der Ware.
         entity.with_child((
+            PriceTag,
             Text2d::new(format!("{price}")),
             TextFont {
                 font_size: FontSize::Px(14.0),
@@ -187,6 +188,11 @@ pub fn spawn_loot_entity(
         ));
     }
 }
+
+/// Markiert Preisschilder im Shop (der Fluch „Blindkauf“ verdeckt sie,
+/// siehe `curses.rs`).
+#[derive(Component)]
+pub struct PriceTag;
 
 /// Beschriftung unter dem Altar.
 #[derive(Component)]
@@ -480,6 +486,11 @@ pub fn reward_room_clear(
         );
         for reward in rewards {
             apply_reward(reward, &mut run.inventory, &mut health);
+        }
+        // Segen der Etage („Glückssträhne“): Münzen obendrauf.
+        let bonus = run.modifier().map_or(0, |m| m.room_clear_coins());
+        if bonus > 0 {
+            apply_reward(Reward::Coins(bonus), &mut run.inventory, &mut health);
         }
         // Beute: Boss → Item, normaler Raum → Zufallsdrop.
         let loot = match run.floor.get(room.pos).map(|r| r.kind) {

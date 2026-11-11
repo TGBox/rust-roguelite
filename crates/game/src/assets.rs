@@ -52,6 +52,8 @@ pub struct Sprites {
     /// Aktives Item (oranger Edelstein) – auf dem Sockel und im HUD.
     pub active_item: Handle<Image>,
     pub altar: Handle<Image>,
+    /// Dunkelheit mit Lichtkreis (Fluch „Dunkelheit“).
+    pub darkness: Handle<Image>,
 }
 
 /// Kachel-Texturen (prozedural, siehe `pixel_art::tiles`).
@@ -155,6 +157,7 @@ impl FromWorld for GameAssets {
             pixel: images.add(white_pixel()),
             active_item: images.add(image_from_ascii(ITEM, ACTIVE_ITEM_PALETTE)),
             altar: images.add(image_from_ascii(ALTAR, ALTAR_PALETTE)),
+            darkness: images.add(image_from_canvas(tiles::vignette())),
         };
 
         let tiles = TileArt {

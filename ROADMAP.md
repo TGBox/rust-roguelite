@@ -238,7 +238,15 @@ Jeder Meilenstein endet mit etwas **Spielbarem oder Testbarem**. „DoD“ = Def
   - `companions.rs`: Abgleich Inventar ↔ Entities, Bewegung ohne Physik-Körper, Angriffe.
   - *Lernfokus:* Query-Disjunktheit mit `Without<…>`, Change Detection als Abkürzung,
     `Iterator::eq`/`product`, Deref-Coercion von `Mut<T>` zu `&mut T`.
-- **M10e – Flüche und Etagen-Modifikatoren** (offen)
+- **M10e – Flüche und Etagen-Modifikatoren (umgesetzt; `dungeon_gen` getestet, Spiel-Crate: Test ausstehend)**
+  - `dungeon_gen::curses::for_floor(seed, depth)`: reine Funktion mit eigenem RNG-Stream – der
+    Fluch wird nirgends gespeichert. Etage 1 ist frei; danach 10 % Segen, sonst 55 % Fluch.
+  - Flüche: **Dunkelheit** (Lichtkreis um den Spieler), **Verirrt** (leere Minimap), **Hast**
+    (Gegner-Tempo ×1,25), **Zähigkeit** (Gegner-Leben ×1,35), **Blindkauf** (Preisschilder „?“).
+    Segen: **Glückssträhne** (+1 Münze pro geräumtem Raum).
+  - Anzeige: Einblendung beim Betreten der Etage, dauerhaft neben „Etage x/y“ im HUD.
+  - *Lernfokus:* reine Funktionen statt gespeichertem Zustand, `match` über Tupel,
+    `Option::map_or` mit Methodenpfaden, `Added<T>`-Filter.
 - **M10f – Verbrauchsgegenstände** (offen): Karten/Tränke mit unbekannter Wirkung.
 - **M10g – Mehr Etagen und Endboss** (offen)
 

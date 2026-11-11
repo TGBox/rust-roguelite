@@ -11,6 +11,7 @@ mod bomb;
 mod camera;
 mod combat;
 mod companions;
+mod curses;
 mod debug;
 mod enemy;
 mod inventory;
@@ -85,6 +86,6 @@ fn main() {
             debug::DebugPlugin,
         ))
         // Dritter Aufruf: Die Liste oben ist mit 14 Einträgen fast voll.
-        .add_plugins(companions::CompanionPlugin)
+        .add_plugins((companions::CompanionPlugin, curses::CursePlugin))
         .run();
 }

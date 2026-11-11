@@ -6,7 +6,7 @@
 //! bei höchstens 20 Räumen ist das billiger als jede clevere Aktualisierung.
 
 use bevy::prelude::*;
-use dungeon_gen::{GridPos, RoomKind, floor::FLOOR_SIZE};
+use dungeon_gen::{FloorModifier, GridPos, RoomKind, floor::FLOOR_SIZE};
 
 use crate::{room::CurrentRoom, run::Run, states::AppState};
 
@@ -61,6 +61,10 @@ fn rebuild_minimap(
 ) {
     for cell in &old_cells {
         commands.entity(cell).despawn();
+    }
+    // Fluch „Verirrt“: Der Rahmen bleibt, die Karte bleibt leer.
+    if run.modifier() == Some(FloorModifier::Lost) {
+        return;
     }
 
     for (pos, info) in run.floor.rooms() {

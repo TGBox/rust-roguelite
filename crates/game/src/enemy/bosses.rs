@@ -227,6 +227,7 @@ pub fn brood_ai(
                     kind: EnemyKind::Splitling,
                     pos: spawn_pos,
                     depth: run.floor.depth,
+                    modifier: run.modifier(),
                     champion: false,
                     asleep: 0.4,
                 },

@@ -7,7 +7,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use bevy::prelude::*;
 use dungeon_gen::{
-    CharacterId, Floor, GridPos, Rng, RoomLayout, RunSeed, characters, floor,
+    CharacterId, Floor, FloorModifier, GridPos, Rng, RoomLayout, RunSeed, characters, curses,
+    floor,
     items::{ItemDb, ItemId, ItemPools},
     loot::Loot,
     meta::{self, Outcome, RunRecord},
@@ -81,6 +82,14 @@ pub struct Run {
     pub stats: RunStats,
     /// Falltür nach dem Boss: (Raum, Kachel).
     pub trapdoor: Option<(GridPos, GridPos)>,
+}
+
+impl Run {
+    /// Fluch oder Segen der aktuellen Etage. Wird nicht gespeichert, sondern
+    /// jedes Mal aus Seed und Tiefe berechnet (siehe `dungeon_gen::curses`).
+    pub fn modifier(&self) -> Option<FloorModifier> {
+        curses::for_floor(self.seed, self.floor.depth)
+    }
 }
 
 #[derive(Debug, Default)]

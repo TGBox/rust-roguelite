@@ -166,6 +166,43 @@ pub fn pit() -> Canvas {
     c
 }
 
+/// Kantenlänge der Dunkelheits-Textur in Bildpixeln.
+pub const VIGNETTE_PIXELS: u32 = 256;
+/// So viele Kacheln deckt die Textur ab, wenn sie angezeigt wird. Bei 256
+/// Pixeln sind das 8 Texturpixel pro Kachel – grob genug, um nach Pixel-Art
+/// auszusehen, und groß genug, um von jeder Stelle aus den Raum zu verdecken.
+pub const VIGNETTE_TILES: f32 = 32.0;
+/// Bis hierhin ist alles klar zu sehen, ab hier ganz dunkel (Kacheln).
+const VIGNETTE_CLEAR_TILES: f32 = 2.6;
+const VIGNETTE_DARK_TILES: f32 = 4.4;
+/// Nicht ganz schwarz: Wände bleiben als Schemen erkennbar.
+const VIGNETTE_MAX_ALPHA: f32 = 238.0;
+/// Der Übergang hat nur wenige Stufen – ein weicher Verlauf sähe neben den
+/// harten Pixeln der übrigen Grafik fremd aus.
+const VIGNETTE_STEPS: f32 = 5.0;
+
+/// Dunkelheit mit Lichtkreis: in der Mitte durchsichtig, außen fast schwarz.
+/// Wird beim Fluch „Dunkelheit“ über den Spieler gelegt.
+pub fn vignette() -> Canvas {
+    let mut c = Canvas::new(VIGNETTE_PIXELS, VIGNETTE_PIXELS, [0, 0, 0, 0]);
+    let per_tile = VIGNETTE_PIXELS as f32 / VIGNETTE_TILES;
+    let (clear, dark) = (
+        VIGNETTE_CLEAR_TILES * per_tile,
+        VIGNETTE_DARK_TILES * per_tile,
+    );
+    let half = VIGNETTE_PIXELS as f32 / 2.0;
+    c.paint(|x, y| {
+        let dx = x as f32 + 0.5 - half;
+        let dy = y as f32 + 0.5 - half;
+        let distance = (dx * dx + dy * dy).sqrt();
+        // 0 im Lichtkreis, 1 im Dunkeln, dazwischen in Stufen.
+        let t = ((distance - clear) / (dark - clear)).clamp(0.0, 1.0);
+        let stepped = (t * VIGNETTE_STEPS).round() / VIGNETTE_STEPS;
+        [4, 3, 8, (stepped * VIGNETTE_MAX_ALPHA).round() as u8]
+    });
+    c
+}
+
 /// Offene Tür: dunkler Durchgang mit Holzrahmen.
 pub fn door_open() -> Canvas {
     let mut c = door_frame();
@@ -265,6 +302,23 @@ mod tests {
             // Jedes vierte Byte ist Alpha: Kacheln dürfen keine Löcher haben.
             assert!(t.data.chunks(4).all(|p| p[3] == 255));
         }
+    }
+
+    #[test]
+    fn vignette_is_clear_in_the_middle_and_dark_outside() {
+        let v = vignette();
+        let mid = VIGNETTE_PIXELS as i32 / 2;
+        assert_eq!(v.get(mid, mid)[3], 0);
+        assert_eq!(v.get(0, 0)[3], VIGNETTE_MAX_ALPHA as u8);
+        assert_eq!(v.get(mid, 0)[3], VIGNETTE_MAX_ALPHA as u8);
+        // Von der Mitte nach rechts wird es nie wieder heller.
+        let row: Vec<u8> = (mid..VIGNETTE_PIXELS as i32)
+            .map(|x| v.get(x, mid)[3])
+            .collect();
+        assert!(row.windows(2).all(|w| w[0] <= w[1]));
+        // Der Übergang hat Zwischenstufen, ist also kein harter Rand.
+        let levels: std::collections::BTreeSet<u8> = row.into_iter().collect();
+        assert!(levels.len() >= 4, "{levels:?}");
     }
 
     #[test]

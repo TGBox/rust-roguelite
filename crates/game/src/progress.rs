@@ -192,6 +192,10 @@ fn descend_floor(
     commands.insert_resource(room);
     // Das Flowfield gehört zur alten Etage (gleiche Raumposition, anderes Layout).
     commands.remove_resource::<PlayerFlow>();
-    toast.show(format!("Etage {depth} von {MAX_DEPTH}"));
+    let mut text = format!("Etage {depth} von {MAX_DEPTH}");
+    if let Some(modifier) = run.modifier() {
+        text.push_str(&format!("   ·   {}", modifier.announcement()));
+    }
+    toast.show(text);
     autosave.write(Autosave);
 }

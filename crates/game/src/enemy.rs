@@ -17,7 +17,7 @@
 
 use bevy::prelude::*;
 use dungeon_gen::{
-    EnemyKind, GridPos, meta,
+    EnemyKind, FloorModifier, GridPos, meta,
     pathing::{FlowField, SPIKE_PENALTY},
     spawns,
 };
@@ -238,6 +238,8 @@ pub struct EnemySpawn {
     /// Weltposition.
     pub pos: Vec2,
     pub depth: u32,
+    /// Fluch der Etage – „Hast“ und „Zähigkeit“ verändern die Werte.
+    pub modifier: Option<FloorModifier>,
     pub champion: bool,
     /// Wie lange er nach dem Erscheinen noch stillhält (s).
     pub asleep: f32,
@@ -249,6 +251,14 @@ pub fn spawn_enemy(commands: &mut Commands, spawn: EnemySpawn, assets: &GameAsse
     // Tiefere Etagen: zähere und etwas schnellere Gegner.
     s.health *= meta::enemy_health_multiplier(spawn.depth);
     s.mobility.speed *= meta::enemy_speed_multiplier(spawn.depth);
+    // `map_or(1.0, …)`: ohne Fluch bleibt der Faktor 1. Der Methodenpfad
+    // `FloorModifier::enemy_health_factor` steht für `|m| m.enemy_health_factor()`.
+    s.health *= spawn
+        .modifier
+        .map_or(1.0, FloorModifier::enemy_health_factor);
+    s.mobility.speed *= spawn
+        .modifier
+        .map_or(1.0, FloorModifier::enemy_speed_factor);
     if spawn.champion {
         s.health *= 2.0;
     }
@@ -360,6 +370,7 @@ pub fn spawn_room_enemies(
                 kind: spawn.kind,
                 pos: room.tile_center(spawn.pos),
                 depth,
+                modifier: run.modifier(),
                 champion: spawn.champion,
                 asleep: WAKE_UP_SECS,
             },
