@@ -10,6 +10,7 @@ mod audio;
 mod bomb;
 mod camera;
 mod combat;
+mod companions;
 mod debug;
 mod enemy;
 mod inventory;
@@ -83,5 +84,7 @@ fn main() {
             ui::UiPlugin,
             debug::DebugPlugin,
         ))
+        // Dritter Aufruf: Die Liste oben ist mit 14 Einträgen fast voll.
+        .add_plugins(companions::CompanionPlugin)
         .run();
 }

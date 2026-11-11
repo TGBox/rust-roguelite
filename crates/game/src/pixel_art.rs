@@ -131,6 +131,10 @@ mod tests {
             (BOMBER, BOMBER_PALETTE),
             (TURRET, TURRET_PALETTE),
             (WASP, WASP_PALETTE),
+            (SHOT, ORB_PALETTE),
+            (GUNNER, GUNNER_PALETTE),
+            (SEEKER, SEEKER_PALETTE),
+            (HOUND, HOUND_PALETTE),
         ];
         for (rows, palette) in sprites {
             let (w, h, data) = rgba_from_ascii(rows, palette);

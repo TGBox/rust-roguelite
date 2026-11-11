@@ -629,3 +629,58 @@ pub const WASP_PALETTE: Palette = &[
     ('W', [220, 235, 245, 255]),
     ('C', [170, 205, 230, 255]),
 ];
+
+// --- Begleiter -------------------------------------------------------------------
+
+/// Wächterkugel: dieselbe Form wie ein Schuss (`SHOT`), nur golden und größer dargestellt.
+pub const ORB_PALETTE: Palette = &[
+    ('K', OUTLINE),
+    ('W', WHITE),
+    ('C', [255, 215, 90, 255]),
+    ('D', [200, 140, 40, 255]),
+];
+
+/// Kleiner Bruder: ein blaues Gespenst.
+pub const GUNNER: &[&str] = &[
+    "..KKKK..", ".KBBBBK.", "KBWEBWEK", "KBBBBBBK", "KBBBBBBK", "KBLBBLBK", "KBKBBKBK", "K.K..K.K",
+];
+
+pub const GUNNER_PALETTE: Palette = &[
+    ('K', OUTLINE),
+    ('B', [110, 170, 235, 255]),
+    ('L', [70, 120, 190, 255]),
+    ('W', WHITE),
+    ('E', [15, 15, 25, 255]),
+];
+
+/// Irrlicht: grüne Flamme mit hellem Kern.
+pub const SEEKER: &[&str] = &[
+    "...KK...", "..KGGK..", "..KGLK..", ".KGLLGK.", "KGLWWLGK", "KGLWWLGK", "KGGLLGGK", ".KGGGGK.",
+    "..KKKK..",
+];
+
+pub const SEEKER_PALETTE: Palette = &[
+    ('K', OUTLINE),
+    ('G', [60, 190, 150, 255]),
+    ('L', [150, 240, 200, 255]),
+    ('W', WHITE),
+];
+
+/// Geisterhund: blasser Kopf mit spitzen Ohren und Zähnen.
+pub const HOUND: &[&str] = &[
+    "KK......KK",
+    "KPK....KPK",
+    "KPPKKKKPPK",
+    "KPWEPPWEPK",
+    "KPPPPPPPPK",
+    ".KPPKKPPK.",
+    ".KPWKKWPK.",
+    "..KKKKKK..",
+];
+
+pub const HOUND_PALETTE: Palette = &[
+    ('K', OUTLINE),
+    ('P', [150, 205, 225, 255]),
+    ('W', WHITE),
+    ('E', [20, 30, 60, 255]),
+];

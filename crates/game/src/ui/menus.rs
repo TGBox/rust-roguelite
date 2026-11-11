@@ -10,14 +10,14 @@ use bevy::{
     prelude::*,
 };
 use dungeon_gen::{
-    RunSeed,
-    meta::{self, Outcome},
+    CharacterId, RunSeed, characters,
+    meta::{self, Outcome, Profile},
 };
 
-use super::{MenuAction, button, hint, perform, screen_root, title};
+use super::{MenuAction, button, button_with, hint, perform, screen_root, title};
 use crate::{
     profile::MetaProfile,
-    run::{ChosenSeed, LastRun, Run},
+    run::{ChosenCharacter, ChosenSeed, LastRun, Run},
     save,
     states::{AppState, InGameState},
 };
@@ -41,13 +41,68 @@ impl Plugin for MenusPlugin {
                         )
                         .run_if(input_just_pressed(KeyCode::Enter)),
                     seed_entry_input.run_if(in_state(AppState::SeedEntry)),
+                    // C wechselt den Charakter – dasselbe wie der Button.
+                    cycle_character
+                        .run_if(in_state(AppState::MainMenu))
+                        .run_if(input_just_pressed(KeyCode::KeyC)),
+                    // Nur wenn sich die Wahl geändert hat, nicht jedes Bild.
+                    refresh_character_choice
+                        .run_if(in_state(AppState::MainMenu))
+                        .run_if(resource_changed::<ChosenCharacter>),
                 ),
             );
     }
 }
 
-fn spawn_main_menu(mut commands: Commands, profile: Res<MetaProfile>) {
+/// Markiert den Text des Charakter-Buttons.
+#[derive(Component)]
+struct CharacterLabel;
+
+/// Markiert die Beschreibung unter dem Charakter-Button.
+#[derive(Component)]
+struct CharacterHint;
+
+/// Beschreibung des gewählten Charakters und – als Ansporn – der nächste,
+/// der sich freischalten lässt.
+fn character_hint(id: CharacterId, profile: &Profile) -> String {
+    let mut text = format!("Charakter – {}", id.def().description);
+    if let Some((next, condition)) = characters::next_locked(profile) {
+        text.push_str(&format!(
+            "   ·   Gesperrt: {} ({})",
+            next.name,
+            condition.describe()
+        ));
+    }
+    text
+}
+
+fn cycle_character(mut chosen: ResMut<ChosenCharacter>, profile: Res<MetaProfile>) {
+    chosen.0 = chosen.0.next_available(&profile.0);
+}
+
+/// Zwei Abfragen auf `&mut Text` dürfen sich nicht überschneiden – die
+/// `Without`-Filter beweisen Bevy, dass sie verschiedene Entities treffen.
+fn refresh_character_choice(
+    chosen: Res<ChosenCharacter>,
+    profile: Res<MetaProfile>,
+    mut labels: Query<&mut Text, (With<CharacterLabel>, Without<CharacterHint>)>,
+    mut hints: Query<&mut Text, (With<CharacterHint>, Without<CharacterLabel>)>,
+) {
+    for mut text in &mut labels {
+        text.0 = chosen.0.def().name.to_string();
+    }
+    for mut text in &mut hints {
+        text.0 = character_hint(chosen.0, &profile.0);
+    }
+}
+
+fn spawn_main_menu(
+    mut commands: Commands,
+    profile: Res<MetaProfile>,
+    chosen: Res<ChosenCharacter>,
+) {
     let p = &profile.0;
+    let character = chosen.0;
     let locked = meta::locked_items(p).len();
     let stats = format!(
         "Runs {}   ·   Siege {}   ·   Beste Etage {}   ·   Kills {}   ·   Gesperrte Items {locked}",
@@ -67,11 +122,17 @@ fn spawn_main_menu(mut commands: Commands, profile: Res<MetaProfile>) {
                 menu.spawn(button("Fortsetzen", MenuAction::Continue));
             }
             menu.spawn(button("Neuer Run", MenuAction::StartRun));
+            menu.spawn(button_with(
+                character.def().name,
+                MenuAction::NextCharacter,
+                CharacterLabel,
+            ));
+            menu.spawn((CharacterHint, hint(&character_hint(character, p))));
             menu.spawn(button("Seed eingeben", MenuAction::EnterSeed));
             menu.spawn(button("Beenden", MenuAction::Quit));
             menu.spawn(hint(&stats));
             menu.spawn(hint(
-                "Enter: neuer Run   ·   WASD: laufen   ·   Pfeiltasten: schießen   ·   E: Bombe   ·   Esc: Pause",
+                "Enter: neuer Run   ·   C: Charakter   ·   WASD: laufen   ·   Pfeiltasten: schießen   ·   E: Bombe   ·   Esc: Pause",
             ));
         });
 }
@@ -115,7 +176,8 @@ fn spawn_summary(mut commands: Commands, last: Option<Res<LastRun>>) {
                 Outcome::Death => "Gestorben",
             };
             let details = format!(
-                "Etage {}/{}   ·   {} Kills   ·   {} Boss(e)   ·   {} Items   ·   {}   ·   Seed {}",
+                "{}   ·   Etage {}/{}   ·   {} Kills   ·   {} Boss(e)   ·   {} Items   ·   {}   ·   Seed {}",
+                l.character,
                 r.depth_reached,
                 meta::MAX_DEPTH,
                 r.kills,
@@ -265,6 +327,15 @@ mod tests {
         assert_eq!(render_seed(""), "____-____-____-____");
         assert_eq!(render_seed("1A2B3"), "1A2B-3___-____-____");
         assert_eq!(render_seed("0123456789ABCDEF"), "0123-4567-89AB-CDEF");
+    }
+
+    #[test]
+    fn character_texts() {
+        let fresh = Profile::default();
+        // Frisches Profil: Es gibt noch etwas freizuschalten – das steht im Hinweis.
+        let hint = character_hint(CharacterId::Wanderer, &fresh);
+        assert!(hint.contains(CharacterId::Wanderer.def().description));
+        assert!(hint.contains("Gesperrt: Späherin"), "{hint}");
     }
 
     #[test]

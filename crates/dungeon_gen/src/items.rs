@@ -17,6 +17,11 @@
 //! - **aktive Items** (Taste Q, laden sich durch geräumte Räume auf),
 //! - **Synergien**: Bonus-Effekte, wenn man bestimmte Items zusammen besitzt.
 //!
+//! Seit M10d gibt es **Begleiter**: Items, die eine Figur an die Seite des
+//! Spielers stellen ([`Effect::Companion`]). Hier steht nur, *welche* Begleiter
+//! mit wie viel Schaden da sind ([`companions`]) – bewegt und gezeichnet
+//! werden sie in der Spiel-Crate.
+//!
 //! Alle Auswertungen laufen über ein [`Loadout`]: die Items des Spielers
 //! plus alle dadurch aktiven Synergien.
 
@@ -85,6 +90,24 @@ pub enum Effect {
     /// Macht das Item zu einem **aktiven** Item: Taste Q, braucht `charges`
     /// geräumte Räume zum Aufladen.
     Active { kind: ActiveKind, charges: u32 },
+    /// Ein Begleiter dieser Art mit diesem Grundschaden pro Treffer.
+    Companion { kind: CompanionKind, damage: f32 },
+    /// Schaden aller Begleiter × Faktor (mehrere Faktoren multiplizieren sich).
+    CompanionPower(f32),
+}
+
+/// Welche Art Begleiter ein Item beschwört.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum CompanionKind {
+    /// Kreist um den Spieler, schadet bei Berührung und fängt Gegnerschüsse ab.
+    Orbital,
+    /// Folgt dem Spieler und schießt mit, wenn er schießt.
+    Gunner,
+    /// Folgt dem Spieler und schießt von selbst auf den nächsten Gegner.
+    Seeker,
+    /// Jagt Gegner in der Nähe und beißt zu.
+    Hound,
 }
 
 /// Was ein aktives Item beim Benutzen tut.
@@ -175,7 +198,7 @@ pub struct Synergy {
 
 /// Aktuelle Version des Item-Formats. Ältere `items.ron`-Dateien werden
 /// von der Spiel-Crate durch die eingebauten Items ersetzt (mit Sicherung).
-pub const ITEMS_VERSION: u32 = 2;
+pub const ITEMS_VERSION: u32 = 3;
 
 /// Dateien ohne `version`-Feld stammen aus der ersten Fassung.
 #[cfg(feature = "serde")]
@@ -625,6 +648,68 @@ impl ItemDb {
                     charges: 3,
                 }],
             ),
+            // --- Begleiter ---
+            item(
+                "guardian_orb",
+                "Wächterkugel",
+                "Begleiter: Kugel umkreist dich, schadet und fängt Schüsse ab",
+                &[Treasure, Shop],
+                20,
+                vec![Companion {
+                    kind: CompanionKind::Orbital,
+                    damage: 2.0,
+                }],
+            ),
+            item(
+                "twin_moons",
+                "Zwillingsmonde",
+                "Begleiter: zwei schwächere Kugeln umkreisen dich",
+                &[Treasure, Boss],
+                20,
+                vec![
+                    Companion {
+                        kind: CompanionKind::Orbital,
+                        damage: 1.5,
+                    },
+                    Companion {
+                        kind: CompanionKind::Orbital,
+                        damage: 1.5,
+                    },
+                ],
+            ),
+            item(
+                "little_brother",
+                "Kleiner Bruder",
+                "Begleiter: schießt mit, wenn du schießt",
+                &[Treasure, Shop],
+                20,
+                vec![Companion {
+                    kind: CompanionKind::Gunner,
+                    damage: 1.5,
+                }],
+            ),
+            item(
+                "wisp",
+                "Irrlicht",
+                "Begleiter: schießt von selbst auf den nächsten Gegner",
+                &[Treasure],
+                20,
+                vec![Companion {
+                    kind: CompanionKind::Seeker,
+                    damage: 1.0,
+                }],
+            ),
+            item(
+                "ghost_hound",
+                "Geisterhund",
+                "Begleiter: jagt Gegner in deiner Nähe und beißt zu",
+                &[Treasure, Boss],
+                20,
+                vec![Companion {
+                    kind: CompanionKind::Hound,
+                    damage: 3.0,
+                }],
+            ),
             item(
                 FALLBACK_ID,
                 "Frühstück",
@@ -694,6 +779,18 @@ impl ItemDb {
                 &["magnet_eye", "drill"],
                 vec![mul(Damage, 1.5)],
             ),
+            synergy(
+                "Sternbild",
+                "Drei Kugeln im Orbit: Begleiter-Schaden +50 %",
+                &["guardian_orb", "twin_moons"],
+                vec![CompanionPower(1.5)],
+            ),
+            synergy(
+                "Rudel",
+                "Bruder, Irrlicht und Hund: Begleiter-Schaden ×2",
+                &["little_brother", "wisp", "ghost_hound"],
+                vec![CompanionPower(2.0)],
+            ),
         ];
         Self {
             version: ITEMS_VERSION,
@@ -735,14 +832,31 @@ impl<'a> Loadout<'a> {
 
 /// Endgültige Stats aus Grundwerten, Items und Situation.
 pub fn compute_stats(loadout: &Loadout, coins: u32, missing_health: u32) -> Stats {
+    compute_stats_with(loadout, coins, missing_health, &[])
+}
+
+/// Wie [`compute_stats`], mit zusätzlichen Modifiern, die von keinem Item
+/// stammen – z. B. denen des gewählten Charakters
+/// (siehe [`crate::characters`]). Sie landen im selben Topf wie die
+/// Item-Modifier: erst alle Additionen, dann alle Multiplikationen.
+pub fn compute_stats_with(
+    loadout: &Loadout,
+    coins: u32,
+    missing_health: u32,
+    extra: &[Modifier],
+) -> Stats {
     let item_count = loadout.items.len() as u32;
-    let modifiers = loadout.effects().filter_map(|e| match *e {
-        Effect::Stat(m) => Some(m),
-        Effect::PerCoins { per, modifier } => Some(repeat(modifier, coins / per.max(1))),
-        Effect::PerMissingHealth(modifier) => Some(repeat(modifier, missing_health)),
-        Effect::PerItem(modifier) => Some(repeat(modifier, item_count)),
-        _ => None,
-    });
+    let modifiers = loadout
+        .effects()
+        .filter_map(|e| match *e {
+            Effect::Stat(m) => Some(m),
+            Effect::PerCoins { per, modifier } => Some(repeat(modifier, coins / per.max(1))),
+            Effect::PerMissingHealth(modifier) => Some(repeat(modifier, missing_health)),
+            Effect::PerItem(modifier) => Some(repeat(modifier, item_count)),
+            _ => None,
+        })
+        // `copied()` macht aus `&Modifier` wieder `Modifier` (der Typ ist `Copy`).
+        .chain(extra.iter().copied());
     Stats::with_modifiers(Stats::BASE, modifiers)
 }
 
@@ -841,6 +955,40 @@ pub fn shot_pattern(loadout: &Loadout) -> ShotPattern {
         }
     }
     p
+}
+
+/// Ein Begleiter, wie ihn das Spiel erzeugen soll: Art und fertiger Schaden.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct CompanionSpec {
+    pub kind: CompanionKind,
+    pub damage: f32,
+}
+
+/// Alle Begleiter eines Loadouts, in der Reihenfolge der Items. Der Schaden
+/// enthält bereits alle [`Effect::CompanionPower`]-Faktoren.
+///
+/// Zwei Durchläufe über dieselben Effekte: erst den Gesamtfaktor bilden
+/// (`product()` multipliziert alle Elemente eines Iterators), dann die
+/// Begleiter einsammeln. So ist egal, ob die Synergie vor oder nach dem
+/// Begleiter-Item in der Liste steht.
+pub fn companions(loadout: &Loadout) -> Vec<CompanionSpec> {
+    let power: f32 = loadout
+        .effects()
+        .filter_map(|e| match *e {
+            Effect::CompanionPower(factor) => Some(factor),
+            _ => None,
+        })
+        .product();
+    loadout
+        .effects()
+        .filter_map(|e| match *e {
+            Effect::Companion { kind, damage } => Some(CompanionSpec {
+                kind,
+                damage: damage * power,
+            }),
+            _ => None,
+        })
+        .collect()
 }
 
 pub fn room_clear_rewards(loadout: &Loadout) -> Vec<Reward> {
@@ -1161,6 +1309,59 @@ mod tests {
             zero.validate(),
             Err(ItemDbError::ZeroCharges("salve".into()))
         );
+    }
+
+    #[test]
+    fn companions_follow_item_order_and_scale_with_synergies() {
+        let db = ItemDb::builtin();
+        let ids =
+            |list: &[&str]| -> Vec<ItemId> { list.iter().map(|s| ItemId::from(*s)).collect() };
+
+        // Ohne Begleiter-Items: nichts.
+        let none = db.loadout(&ids(&["onion"]), None);
+        assert!(companions(&none).is_empty());
+
+        // Ein Item kann mehrere Begleiter bringen.
+        let moons = db.loadout(&ids(&["twin_moons"]), None);
+        let specs = companions(&moons);
+        assert_eq!(specs.len(), 2);
+        assert!(specs.iter().all(|s| s.kind == CompanionKind::Orbital));
+        assert_eq!(specs[0].damage, 1.5);
+
+        // Reihenfolge der Items bleibt erhalten; „Sternbild“ stärkt alle.
+        let both = db.loadout(&ids(&["twin_moons", "guardian_orb", "wisp"]), None);
+        let specs = companions(&both);
+        let kinds: Vec<_> = specs.iter().map(|s| s.kind).collect();
+        assert_eq!(
+            kinds,
+            [
+                CompanionKind::Orbital,
+                CompanionKind::Orbital,
+                CompanionKind::Orbital,
+                CompanionKind::Seeker
+            ]
+        );
+        assert!((specs[0].damage - 1.5 * 1.5).abs() < 1e-5);
+        assert!((specs[2].damage - 2.0 * 1.5).abs() < 1e-5);
+        assert!((specs[3].damage - 1.0 * 1.5).abs() < 1e-5);
+    }
+
+    #[test]
+    fn every_companion_kind_has_an_item() {
+        let db = ItemDb::builtin();
+        for kind in [
+            CompanionKind::Orbital,
+            CompanionKind::Gunner,
+            CompanionKind::Seeker,
+            CompanionKind::Hound,
+        ] {
+            let found = db.items.iter().any(|i| {
+                i.effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::Companion { kind: k, .. } if *k == kind))
+            });
+            assert!(found, "{kind:?} kommt in keinem Item vor");
+        }
     }
 
     #[test]

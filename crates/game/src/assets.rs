@@ -107,6 +107,11 @@ pub struct ActorSprites {
     pub wasp: ActorArt,
     pub tear: ActorArt,
     pub enemy_shot: ActorArt,
+    // Begleiter (siehe `companions.rs`).
+    pub orb: ActorArt,
+    pub gunner: ActorArt,
+    pub seeker: ActorArt,
+    pub hound: ActorArt,
 }
 
 fn actor(images: &mut Assets<Image>, rows: &[&str], palette: Palette, scale: f32) -> ActorArt {
@@ -186,6 +191,10 @@ impl FromWorld for GameAssets {
             wasp: actor(images, WASP, WASP_PALETTE, 2.0),
             tear: actor(images, SHOT, TEAR_PALETTE, 2.0),
             enemy_shot: actor(images, SHOT, ENEMY_SHOT_PALETTE, 2.0),
+            orb: actor(images, SHOT, ORB_PALETTE, 3.0),
+            gunner: actor(images, GUNNER, GUNNER_PALETTE, 2.0),
+            seeker: actor(images, SEEKER, SEEKER_PALETTE, 2.0),
+            hound: actor(images, HOUND, HOUND_PALETTE, 2.0),
         };
 
         Self {

@@ -17,7 +17,7 @@ use std::{
 
 use bevy::prelude::*;
 use dungeon_gen::{
-    GridPos, Rng, RoomLayout, RunSeed,
+    CharacterId, GridPos, Rng, RoomLayout, RunSeed,
     items::{ItemId, ItemPools},
     loot::Loot,
 };
@@ -68,6 +68,9 @@ pub struct Autosave;
 pub struct RunSave {
     pub version: u32,
     pub seed: RunSeed,
+    /// `default`: Stände von vor den Charakteren laden als Wanderer.
+    #[serde(default)]
+    pub character: CharacterId,
     pub depth: u32,
     pub room: GridPos,
     pub visited: BTreeSet<GridPos>,
@@ -101,6 +104,7 @@ impl RunSave {
         Self {
             version: SAVE_VERSION,
             seed: run.seed,
+            character: run.character,
             depth: run.floor.depth,
             room,
             visited: run.visited.clone(),

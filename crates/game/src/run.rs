@@ -7,9 +7,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use bevy::prelude::*;
 use dungeon_gen::{
-    Floor, GridPos, Rng, RoomLayout, RunSeed, floor,
-    items::{ItemId, ItemPools},
-    loot::{Loot, START_BOMBS, START_KEYS},
+    CharacterId, Floor, GridPos, Rng, RoomLayout, RunSeed, characters, floor,
+    items::{ItemDb, ItemId, ItemPools},
+    loot::Loot,
     meta::{self, Outcome, RunRecord},
 };
 use serde::{Deserialize, Serialize};
@@ -31,6 +31,7 @@ impl Plugin for RunPlugin {
         // Sync-Punkte ein: Die per `Commands` eingefügte Ressource `Run`
         // existiert, wenn `enter_first_room` läuft.
         app.init_resource::<ChosenSeed>()
+            .init_resource::<ChosenCharacter>()
             .add_systems(
                 OnEnter(AppState::InGame),
                 (
@@ -55,6 +56,8 @@ impl Plugin for RunPlugin {
 #[derive(Resource, Debug)]
 pub struct Run {
     pub seed: RunSeed,
+    /// Der gespielte Charakter – bestimmt Grundwerte und Startausrüstung.
+    pub character: CharacterId,
     pub floor: Floor,
     /// Räume, die der Spieler betreten hat (für die Minimap).
     pub visited: BTreeSet<GridPos>,
@@ -100,6 +103,11 @@ pub enum RunEnd {
 #[derive(Resource, Debug, Default)]
 pub struct ChosenSeed(pub Option<RunSeed>);
 
+/// Charakter für den nächsten Run. Anders als der Seed bleibt die Wahl
+/// bestehen, bis man sie im Hauptmenü ändert.
+#[derive(Resource, Debug, Default)]
+pub struct ChosenCharacter(pub CharacterId);
+
 /// Gesetzt, wenn im Hauptmenü „Fortsetzen“ gewählt wurde.
 #[derive(Resource, Debug)]
 pub struct PendingResume(pub RunSave);
@@ -118,8 +126,10 @@ pub struct ResumeInfo {
 pub struct LastRun {
     pub record: RunRecord,
     pub seed: RunSeed,
+    /// Name des gespielten Charakters.
+    pub character: &'static str,
     pub item_names: Vec<String>,
-    /// Namen der durch diesen Run neu freigeschalteten Items.
+    /// Namen der durch diesen Run neu freigeschalteten Items und Charaktere.
     pub unlocked: Vec<String>,
 }
 
@@ -145,10 +155,49 @@ pub struct ActiveSlot {
     pub charge: u32,
 }
 
+/// Startausrüstung eines Charakters. Items, die es in der Datenbank nicht
+/// (mehr) gibt – etwa weil jemand `items.ron` bearbeitet hat –, werden mit
+/// einer Warnung übersprungen statt den Run-Start scheitern zu lassen.
+fn starting_inventory(character: CharacterId, db: &ItemDb) -> Inventory {
+    let def = character.def();
+    let known = |id: &&str| {
+        let found = db.get_str(id).is_some();
+        if !found {
+            warn!("{}: Start-Item '{id}' fehlt in der Datenbank", def.name);
+        }
+        found
+    };
+    Inventory {
+        coins: def.coins,
+        keys: def.keys,
+        bombs: def.bombs,
+        // `copied()` macht aus `&&str` ein `&str`; `filter` reicht seinem
+        // Prädikat dann wieder eine Referenz darauf – daher `&&str` oben.
+        items: def
+            .start_items
+            .iter()
+            .copied()
+            .filter(known)
+            .map(ItemId::from)
+            .collect(),
+        // Aktive Items starten voll geladen. `?` in einer Closure, die
+        // `Option` zurückgibt: fehlt etwas, wird das Ganze `None`.
+        active: def.active.and_then(|id| {
+            let (_, charges) = db.get_str(id)?.active()?;
+            Some(ActiveSlot {
+                id: ItemId::from(id),
+                charge: charges,
+            })
+        }),
+        stored_charges: BTreeMap::new(),
+    }
+}
+
 fn start_run(
     mut commands: Commands,
     time: Res<Time<Real>>,
     mut chosen: ResMut<ChosenSeed>,
+    character: Res<ChosenCharacter>,
     profile: Res<MetaProfile>,
     db: Res<ItemDatabase>,
     resume: Option<Res<PendingResume>>,
@@ -165,6 +214,7 @@ fn start_run(
         );
         commands.insert_resource(Run {
             seed: s.seed,
+            character: s.character,
             floor,
             visited: s.visited.clone(),
             cleared: s.cleared.clone(),
@@ -208,25 +258,33 @@ fn start_run(
     let seed = chosen.0.take().unwrap_or_else(RunSeed::from_entropy);
     let depth = 1;
     let floor = floor::generate(seed, depth);
+    // Sicherheitsnetz: Ein (noch) gesperrter Charakter wird zum Wanderer.
+    let character = if character.0.is_unlocked(&profile.0) {
+        character.0
+    } else {
+        CharacterId::default()
+    };
+    // Was der Charakter mitbringt, soll später nicht noch einmal auftauchen:
+    // Die Start-Items kommen zu den gesperrten Items auf die Ausschlussliste.
+    let mut excluded = meta::locked_items(&profile.0);
+    excluded.extend(character.starting_item_ids());
 
     info!(
-        "Neuer Run – Seed {seed}, Etage {depth}, {} Räume\n{}",
+        "Neuer Run – {}, Seed {seed}, Etage {depth}, {} Räume\n{}",
+        character.def().name,
         floor.len(),
         floor.to_ascii()
     );
     commands.insert_resource(Run {
         seed,
+        character,
         floor,
         visited: BTreeSet::new(),
         cleared: BTreeSet::new(),
         unlocked: BTreeSet::new(),
         layout_overrides: BTreeMap::new(),
-        inventory: Inventory {
-            keys: START_KEYS,
-            bombs: START_BOMBS,
-            ..default()
-        },
-        pools: ItemPools::new(&db.0, &meta::locked_items(&profile.0)),
+        inventory: starting_inventory(character, &db.0),
+        pools: ItemPools::new(&db.0, &excluded),
         loot: BTreeMap::new(),
         loot_prepared: BTreeSet::new(),
         item_rng: seed.stream("items", 0),
@@ -273,18 +331,27 @@ fn finalize_run(
         items: run.inventory.items.len() as u32,
         seconds: (time.elapsed_secs_f64() - run.stats.started_at).max(0.0) as u32,
     };
-    let unlocked = profile
+    // Profil vor dem Run merken: Der Vergleich danach zeigt, welche
+    // Charaktere dieser Run freigeschaltet hat.
+    let before = profile.0.clone();
+    let mut unlocked: Vec<String> = profile
         .0
         .record(&record)
         .into_iter()
         .map(|id| db.0.get_str(id).map_or(id.to_string(), |i| i.name.clone()))
         .collect();
+    unlocked.extend(
+        characters::newly_unlocked(&before, &profile.0)
+            .into_iter()
+            .map(|c| format!("{} (Charakter)", c.def().name)),
+    );
     crate::profile::save(&profile.0);
     info!("Run gewertet: {record:?}");
 
     commands.insert_resource(LastRun {
         record,
         seed: run.seed,
+        character: run.character.def().name,
         item_names: db
             .0
             .resolve(&run.inventory.items)

@@ -218,8 +218,26 @@ Jeder Meilenstein endet mit etwas **Spielbarem oder Testbarem**. „DoD“ = Def
   - Alle drei warnen mit rotem Pulsieren (`juice::tint_enemies`). Gegnermix je Etage angepasst.
   - *Lernfokus:* `#[default]` an Enum-Varianten, Zustandsmaschinen mit Daten in den Varianten,
     `const _: () = assert!(…)` als Compile-Zeit-Prüfung, Methodenpfade statt Closures.
-- **M10c – Spielbare Charaktere** (offen): Startwerte, Start-Items, Freischaltung über das Profil.
-- **M10d – Begleiter** (offen): Orbitale und Familiars als Item-Kategorie.
+- **M10c – Spielbare Charaktere (umgesetzt; `dungeon_gen` getestet, Spiel-Crate: Test ausstehend)**
+  - `dungeon_gen::characters`: fünf Charaktere als Datentabelle – Wanderer (frei), Späherin
+    (1 Boss), Rohling (100 Kills), Sprengmeister (Etage 2), Alchemistin (1 Sieg).
+  - Ein Charakter liefert Herzen, Start-Vorräte, Start-Items (aus der Item-Datenbank, erscheinen
+    im Run nicht noch einmal) und Stat-Modifier (`compute_stats_with`, verrechnet wie Item-Modifier).
+  - Hauptmenü: Button bzw. Taste **C** wechselt durch die freigeschalteten Charaktere; die
+    Zusammenfassung nennt den Charakter und neu freigeschaltete.
+  - Spielstand: neues Feld `character` mit `#[serde(default)]` – keine neue Version nötig.
+  - *Lernfokus:* `const`-Tabellen mit `&'static`-Daten, `#[serde(default)]` für abwärtskompatible
+    Formate, `Iterator::cycle/skip/take`, `?` in Closures, die `Option` zurückgeben.
+- **M10d – Begleiter (umgesetzt; `dungeon_gen` getestet, Spiel-Crate: Test ausstehend)**
+  - Neue Effekte `Companion { kind, damage }` und `CompanionPower(f32)`; `items::companions()`
+    liefert die Begleiter eines Loadouts samt Synergie-Bonus. Item-Format-Version 3
+    (`items.ron` wird beim Start gesichert und neu angelegt).
+  - Fünf Items: Wächterkugel, Zwillingsmonde (Orbitale: Kontaktschaden, fangen Schüsse ab),
+    Kleiner Bruder (schießt mit), Irrlicht (zielt selbst), Geisterhund (jagt und beißt).
+    Zwei Synergien: „Sternbild“, „Rudel“.
+  - `companions.rs`: Abgleich Inventar ↔ Entities, Bewegung ohne Physik-Körper, Angriffe.
+  - *Lernfokus:* Query-Disjunktheit mit `Without<…>`, Change Detection als Abkürzung,
+    `Iterator::eq`/`product`, Deref-Coercion von `Mut<T>` zu `&mut T`.
 - **M10e – Flüche und Etagen-Modifikatoren** (offen)
 - **M10f – Verbrauchsgegenstände** (offen): Karten/Tränke mit unbekannter Wirkung.
 - **M10g – Mehr Etagen und Endboss** (offen)

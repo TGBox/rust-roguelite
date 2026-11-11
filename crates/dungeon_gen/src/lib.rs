@@ -4,6 +4,7 @@
 //! Spiel-Crate übersetzt diese Datenmodelle in Entities; umgekehrt weiß diese
 //! Crate nichts von Rendering.
 
+pub mod characters;
 pub mod collision;
 pub mod floor;
 pub mod grid;
@@ -17,6 +18,7 @@ pub mod spawns;
 pub mod stats;
 pub mod templates;
 
+pub use characters::CharacterId;
 pub use floor::{Floor, RoomInfo, RoomKind};
 pub use grid::{Direction, GridPos};
 pub use rng::{Rng, RunSeed};

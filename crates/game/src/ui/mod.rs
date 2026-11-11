@@ -9,7 +9,8 @@ use bevy::prelude::*;
 use crate::{
     assets::GameAssets,
     audio::{Effect, Sfx},
-    run::{ChosenSeed, LastRun, PendingResume},
+    profile::MetaProfile,
+    run::{ChosenCharacter, ChosenSeed, LastRun, PendingResume},
     save,
     states::{AppState, InGameState},
 };
@@ -36,6 +37,8 @@ pub enum MenuAction {
     /// Neuer Run mit dem Seed des letzten Runs.
     RetrySeed,
     EnterSeed,
+    /// Im Hauptmenü zum nächsten freigeschalteten Charakter wechseln.
+    NextCharacter,
     Resume,
     ToMainMenu,
     Quit,
@@ -97,6 +100,13 @@ fn hint(text: &str) -> impl Bundle {
 
 /// `children![]` erzeugt die Kind-Entities direkt beim Spawnen des Buttons.
 fn button(label: &str, action: MenuAction) -> impl Bundle {
+    // `()` ist das leere Bundle: ein Button ohne Markierung am Text.
+    button_with(label, action, ())
+}
+
+/// Wie `button`, aber der Text bekommt zusätzlich `marker` – so findet ein
+/// System ihn später wieder, um die Beschriftung zu ändern.
+fn button_with(label: &str, action: MenuAction, marker: impl Bundle) -> impl Bundle {
     (
         Button,
         action,
@@ -109,6 +119,7 @@ fn button(label: &str, action: MenuAction) -> impl Bundle {
         },
         BackgroundColor(BUTTON_NORMAL),
         children![(
+            marker,
             Text::new(label),
             TextFont {
                 font_size: FontSize::Px(26.0),
@@ -151,6 +162,8 @@ fn button_actions(
     mut in_game: ResMut<NextState<InGameState>>,
     mut exit: MessageWriter<AppExit>,
     mut chosen: ResMut<ChosenSeed>,
+    mut character: ResMut<ChosenCharacter>,
+    profile: Res<MetaProfile>,
     last: Option<Res<LastRun>>,
     mut sfx: MessageWriter<Sfx>,
 ) {
@@ -161,6 +174,11 @@ fn button_actions(
         sfx.write(Sfx(Effect::Click));
         if *action == MenuAction::RetrySeed {
             chosen.0 = last.as_ref().map(|l| l.seed);
+        }
+        if *action == MenuAction::NextCharacter {
+            // Die Beschriftung aktualisiert `menus::refresh_character_choice`,
+            // sobald sich die Ressource ändert.
+            character.0 = character.0.next_available(&profile.0);
         }
         if *action == MenuAction::Continue {
             // Klappt das Laden nicht, startet einfach ein neuer Run.
@@ -185,6 +203,8 @@ fn perform(
             app_state.set(AppState::InGame)
         }
         MenuAction::EnterSeed => app_state.set(AppState::SeedEntry),
+        // Kein Zustandswechsel: Das erledigt `button_actions` direkt.
+        MenuAction::NextCharacter => {}
         MenuAction::Resume => in_game.set(InGameState::Playing),
         MenuAction::ToMainMenu => app_state.set(AppState::MainMenu),
         MenuAction::Quit => {

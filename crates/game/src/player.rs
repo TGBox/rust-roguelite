@@ -5,7 +5,7 @@
 
 use bevy::prelude::*;
 use dungeon_gen::{
-    items::{Loadout, ShotPattern, compute_stats, roll_shot, shot_pattern},
+    items::{Loadout, ShotPattern, compute_stats_with, roll_shot, shot_pattern},
     room::CENTER,
     stats::Stats,
 };
@@ -27,8 +27,6 @@ use crate::{
 
 /// Hitbox bewusst kleiner als die Grafik: fühlt sich fairer an.
 const PLAYER_HALF_TILES: f32 = 0.3;
-/// Leben in halben Herzen.
-pub const PLAYER_MAX_HEALTH: f32 = 6.0;
 /// Wie schnell die Höchstgeschwindigkeit erreicht wird (1/s). Höher = direkter.
 const ACCELERATION: f32 = 14.0;
 /// Winkel zwischen zwei Schüssen einer Salve (Bogenmaß, ≈ 10°).
@@ -109,12 +107,15 @@ pub fn spawn_player(
     mut commands: Commands,
     assets: Res<GameAssets>,
     room: Res<CurrentRoom>,
+    run: Res<Run>,
     resume: Option<Res<ResumeInfo>>,
 ) {
     let start = room.tile_center(CENTER);
     let art = &assets.actors.player;
+    // Wie viele Herzen es zum Start gibt, bestimmt der Charakter.
     // Beim Fortsetzen: gespeichertes Leben statt voller Herzen.
-    let health = resume.map_or(Health::full(PLAYER_MAX_HEALTH), |r| Health {
+    let max_health = run.character.def().max_health;
+    let health = resume.map_or(Health::full(max_health), |r| Health {
         current: r.health,
         max: r.max_health,
     });
@@ -158,10 +159,12 @@ fn refresh_player_stats(
     let inv = &run.inventory;
     // Passive Items + Synergien. Das aktive Item zählt nur für Synergien.
     let loadout = db.0.loadout(&inv.items, inv.active.as_ref().map(|a| &a.id));
+    // Der Charakter steuert Modifier bei, als trüge er ein unsichtbares Item.
+    let character = run.character.def().modifiers;
     for (mut stats, health) in &mut query {
         let missing = (health.max - health.current).max(0.0) as u32;
         stats.set_if_neq(PlayerStats {
-            stats: compute_stats(&loadout, inv.coins, missing),
+            stats: compute_stats_with(&loadout, inv.coins, missing, character),
             pattern: shot_pattern(&loadout),
         });
     }
