@@ -169,16 +169,28 @@ impl CurrentRoom {
     }
 
     /// Blockiert die Kachel diese Art von Körper? Verschlossene Türen
-    /// sind für Läufer wie Wände.
+    /// sind für Läufer und Flieger wie Wände.
     pub fn blocks(&self, pos: GridPos, kind: BodyKind) -> bool {
+        let shut_door = || {
+            let is_door = self.layout.get(pos) == Some(Tile::Door);
+            is_door && (self.locked || self.is_key_locked(pos))
+        };
         match kind {
-            BodyKind::Walker => {
-                let is_door = self.layout.get(pos) == Some(Tile::Door);
-                self.layout.blocks_movement(pos)
-                    || (is_door && (self.locked || self.is_key_locked(pos)))
-            }
+            BodyKind::Walker => self.layout.blocks_movement(pos) || shut_door(),
+            BodyKind::Flyer => self.layout.blocks_flight(pos) || shut_door(),
             BodyKind::Projectile => self.layout.blocks_projectiles(pos),
         }
+    }
+
+    /// Freie Linie für einen Läufer, die außerdem über keine Stacheln führt?
+    /// Gegner laufen nur dann geradewegs los, sonst folgen sie dem Flowfield
+    /// (das Stacheln meidet).
+    pub fn safe_walk_line(&self, from: Vec2, to: Vec2) -> bool {
+        dungeon_gen::pathing::line_of_sight(
+            self.world_to_tile_space(from).to_array(),
+            self.world_to_tile_space(to).to_array(),
+            |p| self.blocks(p, BodyKind::Walker) || self.layout.is_hazard(p),
+        )
     }
 }
 
@@ -221,6 +233,8 @@ pub fn spawn_room_tiles(commands: &mut Commands, room: &CurrentRoom, assets: &Ga
             Tile::Wall => art.wall.clone(),
             Tile::Rock => art.rock.clone(),
             Tile::Pit => art.pit.clone(),
+            Tile::Spikes => art.spikes.clone(),
+            Tile::Barrel => art.barrel.clone(),
             Tile::Door => door_image(room, pos, assets),
         };
         let mut entity = commands.spawn((
@@ -423,6 +437,28 @@ mod tests {
         assert!(!room.blocks(door_pos(Direction::West), BodyKind::Walker));
         room.key_locked.clear();
         assert!(!room.blocks(door_pos(Direction::East), BodyKind::Walker));
+    }
+
+    #[test]
+    fn flyers_cross_pits_and_spikes_break_the_safe_line() {
+        let mut room = room_at(START_POS);
+        let pit = GridPos::new(5, 4);
+        let spikes = GridPos::new(9, 4);
+        room.layout.set(pit, Tile::Pit);
+        room.layout.set(spikes, Tile::Spikes);
+        assert!(room.blocks(pit, BodyKind::Walker));
+        assert!(!room.blocks(pit, BodyKind::Flyer));
+        assert!(!room.blocks(spikes, BodyKind::Walker));
+
+        // Waagerechte Linie durch die Stacheln: frei, aber nicht „sicher“.
+        let from = room.tile_center(GridPos::new(7, 4));
+        let to = room.tile_center(GridPos::new(12, 4));
+        assert!(room.line_of_sight(from, to, BodyKind::Walker));
+        assert!(!room.safe_walk_line(from, to));
+        // Eine Reihe höher liegt nichts im Weg.
+        let from = room.tile_center(GridPos::new(7, 5));
+        let to = room.tile_center(GridPos::new(12, 5));
+        assert!(room.safe_walk_line(from, to));
     }
 
     #[test]

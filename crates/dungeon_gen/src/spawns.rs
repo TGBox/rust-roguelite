@@ -32,6 +32,14 @@ pub enum EnemyKind {
     Splitling,
     /// Hält Abstand und ruft Splitlinge herbei.
     Summoner,
+    /// Fledermaus: schwach und schnell, fliegt über Gruben und Stacheln.
+    Bat,
+    /// Zünder: rennt zum Spieler, bleibt stehen und sprengt sich in die Luft.
+    Bomber,
+    /// Geschützturm: bewegt sich nicht, feuert abwechselnd gerade und diagonal.
+    Turret,
+    /// Wespe: umkreist den Spieler fliegend und stößt dann geradlinig zu.
+    Wasp,
     /// Boss Etage 1: Klumpenkönig – Schussringe.
     Boss,
     /// Boss Etage 2: Brutmutter – ruft Nachwuchs, später Sturmangriffe.
@@ -41,6 +49,11 @@ pub enum EnemyKind {
 }
 
 impl EnemyKind {
+    /// Flieger ignorieren Gruben und Stacheln (eigenes Flowfield im Spiel).
+    pub fn flies(self) -> bool {
+        matches!(self, EnemyKind::Bat | EnemyKind::Wasp)
+    }
+
     pub fn is_boss(self) -> bool {
         matches!(
             self,
@@ -61,22 +74,38 @@ pub struct Spawn {
 fn weights_for_depth(depth: u32) -> &'static [(EnemyKind, u32)] {
     use EnemyKind::*;
     match depth {
-        0 | 1 => &[(Chaser, 40), (Shooter, 22), (Charger, 20), (Hopper, 18)],
-        2 => &[
-            (Chaser, 25),
+        // Jede Zeile ergibt zusammen 100 – so sind die Zahlen direkt Prozent.
+        0 | 1 => &[
+            (Chaser, 30),
             (Shooter, 18),
-            (Charger, 15),
-            (Hopper, 15),
-            (Splitter, 15),
-            (Summoner, 12),
+            (Charger, 16),
+            (Hopper, 14),
+            (Bat, 12),
+            (Turret, 10),
+        ],
+        2 => &[
+            (Chaser, 14),
+            (Shooter, 12),
+            (Charger, 10),
+            (Hopper, 10),
+            (Splitter, 11),
+            (Summoner, 9),
+            (Bat, 8),
+            (Turret, 7),
+            (Bomber, 11),
+            (Wasp, 8),
         ],
         _ => &[
-            (Chaser, 18),
-            (Shooter, 17),
-            (Charger, 15),
-            (Hopper, 17),
-            (Splitter, 18),
-            (Summoner, 15),
+            (Chaser, 11),
+            (Shooter, 11),
+            (Charger, 10),
+            (Hopper, 10),
+            (Splitter, 12),
+            (Summoner, 10),
+            (Bat, 8),
+            (Turret, 7),
+            (Bomber, 11),
+            (Wasp, 10),
         ],
     }
 }
@@ -276,6 +305,20 @@ mod tests {
     }
 
     #[test]
+    fn weights_sum_to_one_hundred() {
+        for depth in 1..=4 {
+            let sum: u32 = weights_for_depth(depth).iter().map(|(_, w)| w).sum();
+            assert_eq!(sum, 100, "Etage {depth}");
+        }
+        assert!(EnemyKind::Bat.flies() && EnemyKind::Wasp.flies());
+        assert!(!EnemyKind::Chaser.flies() && !EnemyKind::Turret.flies());
+        // Die erste Etage bleibt übersichtlich: keine Zünder, keine Wespen.
+        let first: Vec<_> = weights_for_depth(1).iter().map(|(k, _)| *k).collect();
+        assert!(first.contains(&EnemyKind::Turret));
+        assert!(!first.contains(&EnemyKind::Bomber) && !first.contains(&EnemyKind::Wasp));
+    }
+
+    #[test]
     fn deeper_floors_bring_new_enemies_and_bosses() {
         let layout = RoomLayout::empty();
         let mut kinds = BTreeSet::new();
@@ -288,6 +331,7 @@ mod tests {
             );
         }
         assert!(kinds.contains(&EnemyKind::Splitter) && kinds.contains(&EnemyKind::Summoner));
+        assert!(kinds.contains(&EnemyKind::Bomber) && kinds.contains(&EnemyKind::Wasp));
         let bosses: Vec<_> = (1..=3).map(boss_for_depth).collect();
         assert_eq!(
             bosses,

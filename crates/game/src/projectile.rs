@@ -157,7 +157,8 @@ fn tick_lifetime(
     }
 }
 
-fn despawn_on_tile_hit(
+/// `pub`, damit `terrain.rs` sein Fass-System davor einordnen kann.
+pub fn despawn_on_tile_hit(
     mut commands: Commands,
     mut hits: MessageReader<TileHit>,
     mut projectiles: Query<(&Position, &mut Projectile, &mut Velocity)>,

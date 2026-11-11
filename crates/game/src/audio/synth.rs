@@ -165,6 +165,9 @@ impl Track {
         }
     }
 
+    /// Länge in Sekunden. Bisher fragen nur die Tests danach – `cfg(test)`
+    /// lässt die Methode im normalen Build weg, statt die Warnung zu unterdrücken.
+    #[cfg(test)]
     pub fn duration(&self) -> f32 {
         self.samples.len() as f32 / SAMPLE_RATE as f32
     }

@@ -26,6 +26,7 @@ mod run;
 mod save;
 mod schedule;
 mod states;
+mod terrain;
 mod transition;
 mod ui;
 
@@ -70,6 +71,7 @@ fn main() {
             transition::TransitionPlugin,
             inventory::InventoryPlugin,
             bomb::BombPlugin,
+            terrain::TerrainPlugin,
             progress::ProgressPlugin,
             profile::ProfilePlugin,
             item_db::ItemDbPlugin,

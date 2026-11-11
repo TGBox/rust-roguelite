@@ -499,3 +499,133 @@ pub const ACTIVE_ITEM_PALETTE: Palette = &[
     ('W', WHITE),
     ('S', [140, 132, 125, 255]),
 ];
+
+// --- Terrain: Pulverfass und Fledermaus -----------------------------------------
+
+/// Pulverfass, wird auf eine Bodenkachel gemalt. Der rote Fleck warnt: explosiv.
+pub const BARREL: &[&str] = &[
+    "...KKKKKK...",
+    "..KWWWWWWK..",
+    ".KWLLLLLLWK.",
+    ".KIIIIIIIIK.",
+    "KWWLWWWWDWWK",
+    "KWLLWRRWDDWK",
+    "KWLWRRRRWDWK",
+    "KWLWRRRRWDWK",
+    "KWLLWRRWDDWK",
+    "KWWLWWWWDWWK",
+    ".KIIIIIIIIK.",
+    ".KWDDDDDDWK.",
+    "..KWWWWWWK..",
+    "...KKKKKK...",
+];
+
+pub const BARREL_PALETTE: Palette = &[
+    ('K', OUTLINE),
+    ('W', [150, 95, 50, 255]),
+    ('L', [190, 130, 75, 255]),
+    ('D', [100, 62, 32, 255]),
+    ('I', [80, 80, 90, 255]),
+    ('R', [215, 55, 40, 255]),
+];
+
+/// Fledermaus: violetter Flieger mit ausgebreiteten Flügeln.
+pub const BAT: &[&str] = &[
+    "............",
+    "KK........KK",
+    "KPK..KK..KPK",
+    "KPPKKPPKKPPK",
+    "KPPPPPPPPPPK",
+    ".KPPRPPRPPK.",
+    ".KPDPPPPDPK.",
+    "..KKPWWPKK..",
+    "....KPPK....",
+    ".....KK.....",
+];
+
+pub const BAT_PALETTE: Palette = &[
+    ('K', OUTLINE),
+    ('P', [95, 70, 130, 255]),
+    ('D', [60, 45, 90, 255]),
+    ('R', [255, 80, 60, 255]),
+    ('W', WHITE),
+];
+
+// --- Taktische Gegner: Zünder, Geschützturm, Wespe -------------------------------
+
+/// Zünder: laufende Bombe mit brennender Lunte.
+pub const BOMBER: &[&str] = &[
+    ".....YY.....",
+    "....KFK.....",
+    "...KKKKKK...",
+    "..KGGGGGGK..",
+    ".KGLGGGGGGK.",
+    "KGLGGGGGGGGK",
+    "KGGWEGGWEGGK",
+    "KGGEEGGEEGGK",
+    "KGGGGGGGGGGK",
+    ".KGGGRRGGGK.",
+    "..KDDDDDDK..",
+    "..KK.KK.KK..",
+];
+
+pub const BOMBER_PALETTE: Palette = &[
+    ('K', OUTLINE),
+    ('G', [70, 72, 82, 255]),
+    ('L', [130, 135, 150, 255]),
+    ('D', [45, 46, 55, 255]),
+    ('W', WHITE),
+    ('E', [20, 15, 15, 255]),
+    ('R', [220, 60, 40, 255]),
+    ('Y', [255, 210, 70, 255]),
+    ('F', [200, 150, 90, 255]),
+];
+
+/// Geschützturm: steinerner Sockel mit Auge und zwei Rohren.
+pub const TURRET: &[&str] = &[
+    "....KKKK....",
+    "...KSSSSK...",
+    "..KSLSSSSK..",
+    ".KKSSEESSKK.",
+    "KBKSEWWESKBK",
+    "KBKSEWRESKBK",
+    ".KKSSEESSKK.",
+    "..KSSSSSSK..",
+    "..KSSDDSSK..",
+    ".KDDDDDDDDK.",
+    "KDDDDDDDDDDK",
+    "KKKKKKKKKKKK",
+];
+
+pub const TURRET_PALETTE: Palette = &[
+    ('K', OUTLINE),
+    ('S', [125, 118, 110, 255]),
+    ('L', [175, 168, 158, 255]),
+    ('D', [85, 80, 75, 255]),
+    ('E', [40, 20, 25, 255]),
+    ('W', WHITE),
+    ('R', [230, 50, 50, 255]),
+    ('B', [60, 60, 70, 255]),
+];
+
+/// Wespe: gelb-schwarz gestreift mit hellen Flügeln.
+pub const WASP: &[&str] = &[
+    "..WW....WW..",
+    ".WCCW..WCCW.",
+    ".WCCCKKCCCW.",
+    "..WKKYYKKW..",
+    "..KYYYYYYK..",
+    ".KYEYYYYEYK.",
+    ".KKKKKKKKKK.",
+    "..KYYYYYYK..",
+    "...KKYYKK...",
+    ".....KK.....",
+];
+
+pub const WASP_PALETTE: Palette = &[
+    ('K', OUTLINE),
+    ('Y', [240, 195, 50, 255]),
+    ('E', [200, 30, 30, 255]),
+    ('W', [220, 235, 245, 255]),
+    ('C', [170, 205, 230, 255]),
+];

@@ -8,7 +8,7 @@ Ziel: Rust an einem komplexen, realistischen Projekt lernen – mit sauberer Arc
 ## 1. Leitentscheidungen
 
 | Thema | Entscheidung | Begründung |
-|---|---|---|
+| --- | --- | --- |
 | Genre | Echtzeit, raumbasiert, Twin-Stick (WASD bewegen, Pfeiltasten schießen) | Projektile, Velocity, Angriffsgeschwindigkeit aus dem Ursprungsplan |
 | Engine | Bevy 0.19 komplett (ECS, Rendering, Audio, Input, Assets) | Fokus auf Spiellogik statt Engine-Bau |
 | Physik | **Eigene** Kollision (AABB gegen Tile-Grid, Kreis gegen Kreis) | Lerneffekt, volle Kontrolle, deterministisch; kein Physik-Crate |
@@ -29,7 +29,7 @@ Ziel: Rust an einem komplexen, realistischen Projekt lernen – mit sauberer Arc
 
 ## 2. Architektur
 
-```
+```text
 rust-roguelite/
 ├── Cargo.toml                 # Workspace + gemeinsame Dependency-Versionen
 ├── .cargo/config.toml         # schnellere Dev-Builds
@@ -60,7 +60,7 @@ Jeder Ordner unter `game/src/` ist ein **Bevy-Plugin** (`impl Plugin for PlayerP
 
 ### Zustände
 
-```
+```text
 AppState:     Loading → MainMenu → InGame → RunSummary → MainMenu
 InGameState (SubState von InGame):  Playing ⇄ Paused
                                     Playing → RoomTransition → Playing
@@ -69,12 +69,13 @@ InGameState (SubState von InGame):  Playing ⇄ Paused
 
 ### RNG-Streams
 
-```
+```text
 RunSeed (u64, anzeigbar/eingebbar)
  ├── stream("floor", n)   → Layout von Etage n
  ├── stream("items")      → Item-Pool-Ziehungen
  └── stream("combat")     → Crits, Drops, KI-Entscheidungen
 ```
+
 Jeder Stream = `RunSeed::stream(name, n)` → `Rng::from_seed(mix(seed, fnv1a(name), n))`.
 
 ### Spielwelt-Modell (Isaac-artig)
@@ -91,6 +92,7 @@ Jeder Stream = `RunSeed::stream(name, n)` → `Rng::from_seed(mix(seed, fnv1a(na
 Jeder Meilenstein endet mit etwas **Spielbarem oder Testbarem**. „DoD“ = Definition of Done.
 
 ### M0 – Fundament ✅
+
 - Workspace, `bevy = "0.19"`, Dev-Profil (`opt-level = 1` für eigenen Code, `3` für Dependencies), optional `dynamic_linking`.
 - Bevy-Features auf 2D reduzieren (genaue Feature-Namen für 0.19 prüfen).
 - Fenster, 2D-Kamera, Log-Ausgabe, `cargo clippy` sauber.
@@ -98,6 +100,7 @@ Jeder Meilenstein endet mit etwas **Spielbarem oder Testbarem**. „DoD“ = Def
 - *Lernfokus:* Workspace-Dependencies, Cargo-Profile, Plugin-Pattern.
 
 ### M1 – Core-Loop-Prototyp ✅ (ein fester Raum)
+
 - `Velocity`, `Collider { half_extents }`, Tile-Grid-Kollision mit Wand-Sliding.
 - Spieler: 8-Wege-Bewegung mit Beschleunigung/Reibung, Schießen in 4 Richtungen, Feuerrate-Cooldown.
 - Projektile mit Reichweite/Lebenszeit, Zerstörung an Wänden.
@@ -105,12 +108,14 @@ Jeder Meilenstein endet mit etwas **Spielbarem oder Testbarem**. „DoD“ = Def
 - *Lernfokus:* Components/Queries, `FixedUpdate`, SystemSets & Reihenfolge (`Input → Move → Collide`).
 
 ### M2 – Zustände & Spielfluss ✅
+
 - `AppState` + `InGameState`, Hauptmenü, Pause (Esc), Game-Over-Screen.
 - `DespawnOnExit(State)` für automatisches Aufräumen.
 - **DoD:** Menü → Spiel → Pause → Tod → Menü, ohne übrig gebliebene Entities.
 - *Lernfokus:* States, SubStates, `OnEnter/OnExit`, Run-Conditions.
 
 ### M3 – Prozedurale Etagen ✅ (`dungeon_gen`, Bevy-frei)
+
 - `RunSeed`, RNG-Streams.
 - Etagen-Generator: Raumanzahl abhängig von Etage, Expansion mit Nachbar-Regeln, Spezialräume zuweisen.
 - Raumvorlagen als ASCII im Code (RON-Dateien folgen in M6).
@@ -119,6 +124,7 @@ Jeder Meilenstein endet mit etwas **Spielbarem oder Testbarem**. „DoD“ = Def
 - *Lernfokus:* reine Datenmodelle, `serde`, Trait-basierte Generator-Schritte, Property-Testing.
 
 ### M4 – Räume im Spiel ✅
+
 - Etage aus `dungeon_gen` in Bevy spawnen (nur aktiven Raum als Entities).
 - Türen: offen/zu/verschlossen; schließen beim Betreten eines ungeklärten Raums, öffnen nach letztem Gegner.
 - Raumwechsel mit Kamera-Schwenk (`InGameState::RoomTransition`).
@@ -127,6 +133,7 @@ Jeder Meilenstein endet mit etwas **Spielbarem oder Testbarem**. „DoD“ = Def
 - *Lernfokus:* Ressourcen vs. Entities, Relationships (Raum ↔ Inhalt), Observer.
 
 ### M5 – Gegner & Kampf ✅
+
 - `Health`, `Damage`-Message, Knockback, Unverwundbarkeitsframes, Kontaktschaden.
 - Gegnertypen: *Chaser* (läuft zum Spieler), *Shooter* (hält Abstand, schießt), *Charger* (Anlauf + Sprint).
 - Pathfinding per **Flowfield** (Dijkstra-Map vom Spieler, einmal pro Tick für alle Gegner).
@@ -136,6 +143,7 @@ Jeder Meilenstein endet mit etwas **Spielbarem oder Testbarem**. „DoD“ = Def
 - *Lernfokus:* Messages vs. Observer, generische Systeme, Enum-Zustandsmaschinen.
 
 ### M6 – Items, Stats & Synergien ✅ (M6a: Items als Rust-Daten; M6b offen: RON + Hot-Reload)
+
 - Item-Definitionen in RON (`id`, Name, Seltenheit, Pool, Modifier, Trigger).
 - Stat-System: `Base → +Flat → ×Mult`, neu berechnet bei Änderung (Change Detection).
 - Trigger-Effekte (`OnHit`, `OnKill`, `OnRoomClear`, `OnPickupGold`) über Observer.
@@ -144,6 +152,7 @@ Jeder Meilenstein endet mit etwas **Spielbarem oder Testbarem**. „DoD“ = Def
 - *Lernfokus:* Custom Asset Loader, Trait Objects vs. Enums für Effekte, datengetriebenes Design.
 
 ### M7 – Run-Management & Meta-Progression ✅ (ohne Run-Save – kommt mit serde in M6b)
+
 - Mehrere Etagen, Schwierigkeitskurve.
 - Run-Zusammenfassung (Zeit, Kills, Items, Seed).
 - Persistentes Profil (Freischaltungen) als versionierte Textdatei in `%APPDATA%` (eigenes Format in `dungeon_gen::meta`, getestet).
@@ -153,6 +162,7 @@ Jeder Meilenstein endet mit etwas **Spielbarem oder Testbarem**. „DoD“ = Def
 - *Lernfokus:* Serialisierung, Versionierung von Savegames, Fehlerbehandlung mit `thiserror`/`anyhow`.
 
 ### M8 – Präsentation & Game Feel
+
 - Sprites + Texture-Atlas, Animationen, Z-Ordnung.
 - HUD (Herzen, Gold/Schlüssel/Bomben, aktives Item), echte Minimap.
 - Audio: Schuss, Treffer, Tod, Musik pro Etage.
@@ -167,6 +177,7 @@ Jeder Meilenstein endet mit etwas **Spielbarem oder Testbarem**. „DoD“ = Def
   Musik pausiert im Pausemenü, **M** schaltet stumm.
 
 ### M8c – Spieltiefe (umgesetzt, Test ausstehend)
+
 - **Gegner:** Springer (Sätze, ab Etage 2 Kreuzschüsse), Teiler (zerfällt in Splitlinge),
   Beschwörer (ruft Splitlinge). Gegnermix je Etage, **Champions** (doppeltes Leben, Gold-Schimmer, Beute).
 - **Bosse je Etage** mit zwei Phasen (< 50 % Leben): Klumpenkönig, Brutmutter (Nachwuchs + Sturmangriff),
@@ -180,9 +191,38 @@ Jeder Meilenstein endet mit etwas **Spielbarem oder Testbarem**. „DoD“ = Def
 - Spielstand-Version 2 (alte Stände werden ignoriert).
 
 ### M9 – Polish & Release
+
 - Einstellungen (Lautstärke, Tastenbelegung) über Bevys `SettingsPlugin`.
 - Release-Profil (LTO), Windows-Build, optional WASM.
 - Performance-Check mit Diagnostics-Overlay.
+
+### M10 – Mehr Inhalt (in Arbeit, ein Teilschritt nach dem anderen)
+
+- **M10a – Terrain (umgesetzt; `dungeon_gen` getestet, Spiel-Crate: Test ausstehend)**
+  - Neue Kacheln: **Stacheln** (`^`, begehbar, ½ Herz pro Sekunde; Gegner nehmen ebenfalls Schaden,
+    Flieger und Bosse nicht) und **Pulverfässer** (`b`, massiv, explodieren bei Schuss- oder
+    Bombentreffern, Kettenreaktion über `RoomLayout::chain_blast`).
+  - **Gewichtetes Flowfield** (`FlowField::compute_weighted`): Stacheln kosten vier Schritte extra –
+    Gegner weichen aus, laufen aber darüber, wenn es keinen anderen Weg gibt.
+  - **Flieger**: `BodyKind::Flyer` + zweites Flowfield (Gruben und Stacheln egal). Erster Flieger:
+    **Fledermaus** (schwach, schnell, träge Lenkung), ab Etage 1 im Gegnermix.
+  - Bomben und Fässer teilen sich `PendingExplosions` (`bomb.rs`); Stacheln/Fass-Treffer in `terrain.rs`.
+  - 6 neue Raumvorlagen; neuer Test: Stacheln sind nie der einzige Weg. Spielstand-Version 3.
+  - *Lernfokus:* Enum-Erweiterung mit erschöpfenden `match`, Closures als Kostenfunktion,
+    Borrow-Checker bei `ResMut` (erst lesen, dann schreiben), Ressource statt Message über Tick-Grenzen.
+- **M10b – Neue Gegner (umgesetzt, Test ausstehend)** – `enemy/tactical.rs`
+  - **Zünder** (ab Etage 2): rennt heran, Lunte 0,8 s, sprengt sich über `PendingExplosions` –
+    trifft auch andere Gegner, Felsen und Fässer. Vorher töten verhindert die Explosion.
+  - **Geschützturm** (ab Etage 1): unbeweglich, vier Schüsse abwechselnd gerade und diagonal.
+  - **Wespe** (ab Etage 2, Flieger): kreist um den Spieler, zielt, stößt geradlinig zu.
+  - Alle drei warnen mit rotem Pulsieren (`juice::tint_enemies`). Gegnermix je Etage angepasst.
+  - *Lernfokus:* `#[default]` an Enum-Varianten, Zustandsmaschinen mit Daten in den Varianten,
+    `const _: () = assert!(…)` als Compile-Zeit-Prüfung, Methodenpfade statt Closures.
+- **M10c – Spielbare Charaktere** (offen): Startwerte, Start-Items, Freischaltung über das Profil.
+- **M10d – Begleiter** (offen): Orbitale und Familiars als Item-Kategorie.
+- **M10e – Flüche und Etagen-Modifikatoren** (offen)
+- **M10f – Verbrauchsgegenstände** (offen): Karten/Tränke mit unbekannter Wirkung.
+- **M10g – Mehr Etagen und Endboss** (offen)
 
 ---
 

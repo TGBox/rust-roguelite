@@ -53,9 +53,11 @@ pub struct Body {
 /// Bestimmt, welche Kacheln blockieren.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BodyKind {
-    /// Läuft: blockiert von Wand, Fels, Grube.
+    /// Läuft: blockiert von Wand, Fels, Fass, Grube.
     Walker,
-    /// Fliegt: blockiert von Wand und Fels.
+    /// Fliegende Figur: wie ein Läufer, aber Gruben sind kein Hindernis.
+    Flyer,
+    /// Geschoss: blockiert von Wand, Fels, Fass und Türrahmen.
     Projectile,
 }
 
@@ -113,8 +115,8 @@ fn move_bodies(
         let delta = (vel.0 * dt / TILE_SIZE).to_array();
 
         let result = match body.kind {
-            // Läufer gleiten an Tür- und Felsecken vorbei in die Lücke.
-            BodyKind::Walker => {
+            // Figuren gleiten an Tür- und Felsecken vorbei in die Lücke.
+            BodyKind::Walker | BodyKind::Flyer => {
                 let nudge = collision::Nudge {
                     max_offset: NUDGE_MAX_OFFSET_TILES,
                     max_step: NUDGE_SPEED_TILES * dt,

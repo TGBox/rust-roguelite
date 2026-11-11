@@ -54,8 +54,14 @@ pub enum Tile {
     Wall,
     /// Hindernis: blockiert Laufen und Schüsse.
     Rock,
-    /// Grube: blockiert Laufen, Schüsse fliegen darüber.
+    /// Grube: blockiert Laufen, Schüsse und Flieger kommen darüber hinweg.
     Pit,
+    /// Stacheln: begehbar, aber wer darauf steht, nimmt Schaden.
+    /// Schüsse und Flieger sind nicht betroffen.
+    Spikes,
+    /// Pulverfass: blockiert wie ein Fels, explodiert aber bei Treffern
+    /// und reißt benachbarte Fässer mit (siehe [`RoomLayout::chain_blast`]).
+    Barrel,
     /// Durchgang zum Nachbarraum. Offen begehbar; ob sie gerade verschlossen
     /// ist, entscheidet das Spiel (Zustand, nicht Layout).
     Door,
@@ -63,12 +69,22 @@ pub enum Tile {
 
 impl Tile {
     pub fn blocks_movement(self) -> bool {
-        !matches!(self, Tile::Floor | Tile::Door)
+        !matches!(self, Tile::Floor | Tile::Door | Tile::Spikes)
     }
 
     /// Schüsse zerplatzen auch am Türrahmen.
     pub fn blocks_projectiles(self) -> bool {
-        matches!(self, Tile::Wall | Tile::Rock | Tile::Door)
+        matches!(self, Tile::Wall | Tile::Rock | Tile::Barrel | Tile::Door)
+    }
+
+    /// Flieger kommen über Gruben und Stacheln, aber nicht durch Massives.
+    pub fn blocks_flight(self) -> bool {
+        matches!(self, Tile::Wall | Tile::Rock | Tile::Barrel)
+    }
+
+    /// Schadet die Kachel allem, was darauf läuft?
+    pub fn is_hazard(self) -> bool {
+        self == Tile::Spikes
     }
 
     fn from_char(c: char) -> Option<Tile> {
@@ -77,6 +93,8 @@ impl Tile {
             '#' => Some(Tile::Wall),
             'o' => Some(Tile::Rock),
             '_' => Some(Tile::Pit),
+            '^' => Some(Tile::Spikes),
+            'b' => Some(Tile::Barrel),
             'D' => Some(Tile::Door),
             _ => None,
         }
@@ -88,9 +106,21 @@ impl Tile {
             Tile::Wall => '#',
             Tile::Rock => 'o',
             Tile::Pit => '_',
+            Tile::Spikes => '^',
+            Tile::Barrel => 'b',
             Tile::Door => 'D',
         }
     }
+}
+
+/// Ergebnis einer Explosion samt Kettenreaktion.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ChainBlast {
+    /// Mittelpunkte aller Explosionen: zuerst der Auslöser, danach jedes
+    /// mitgerissene Fass in der Reihenfolge, in der es hochging.
+    pub centers: Vec<GridPos>,
+    /// Alle zerstörten Kacheln (Felsen und Fässer) – jetzt Boden.
+    pub destroyed: Vec<GridPos>,
 }
 
 /// Das Kachel-Raster eines Raums.
@@ -151,6 +181,15 @@ impl RoomLayout {
         self.get(pos).is_none_or(Tile::blocks_projectiles)
     }
 
+    pub fn blocks_flight(&self, pos: GridPos) -> bool {
+        self.get(pos).is_none_or(Tile::blocks_flight)
+    }
+
+    /// Außerhalb des Raums gibt es keine Stacheln.
+    pub fn is_hazard(&self, pos: GridPos) -> bool {
+        self.get(pos).is_some_and(Tile::is_hazard)
+    }
+
     /// Setzt Türen in die angegebenen Wände (Builder-Stil: nimmt `self` und gibt es zurück).
     pub fn with_doors(mut self, dirs: impl IntoIterator<Item = Direction>) -> Self {
         for dir in dirs {
@@ -159,20 +198,44 @@ impl RoomLayout {
         self
     }
 
-    /// Sprengt alle Felsen im 3×3-Bereich um `center` weg (Wände und Türen
-    /// bleiben). Gibt die zerstörten Kacheln zurück.
+    /// Sprengt alle Felsen und Fässer im 3×3-Bereich um `center` weg (Wände
+    /// und Türen bleiben). Gibt die zerstörten Kacheln zurück – inklusive
+    /// derer, die eine Kettenreaktion erwischt hat.
     pub fn blast(&mut self, center: GridPos) -> Vec<GridPos> {
-        let mut destroyed = Vec::new();
-        for dy in -1..=1 {
-            for dx in -1..=1 {
-                let p = center + GridPos::new(dx, dy);
-                if self.get(p) == Some(Tile::Rock) {
+        self.chain_blast(center).destroyed
+    }
+
+    /// Explosion bei `center` mit Kettenreaktion: Jedes getroffene Fass wird
+    /// selbst zum Mittelpunkt einer weiteren 3×3-Explosion.
+    ///
+    /// `centers` dient gleichzeitig als Warteschlange: Wir hängen hinten an
+    /// und wandern mit einem Index durch. Das spart eine zweite Datenstruktur
+    /// und hält die Reihenfolge fest (wichtig für den Determinismus).
+    pub fn chain_blast(&mut self, center: GridPos) -> ChainBlast {
+        let mut result = ChainBlast {
+            centers: vec![center],
+            destroyed: Vec::new(),
+        };
+        let mut next = 0;
+        while next < result.centers.len() {
+            let origin = result.centers[next];
+            next += 1;
+            for dy in -1..=1 {
+                for dx in -1..=1 {
+                    let p = origin + GridPos::new(dx, dy);
+                    match self.get(p) {
+                        Some(Tile::Rock) => {}
+                        Some(Tile::Barrel) => result.centers.push(p),
+                        _ => continue,
+                    }
+                    // Sofort zu Boden machen: So kann dasselbe Fass nicht
+                    // zweimal in der Warteschlange landen.
                     self.set(p, Tile::Floor);
-                    destroyed.push(p);
+                    result.destroyed.push(p);
                 }
             }
         }
-        destroyed
+        result
     }
 
     /// Nächste Bodenkachel zu `target` (Breitensuche), z. B. für Beute, die
@@ -201,7 +264,8 @@ impl RoomLayout {
     /// oberste Raumreihe (y = ROOM_HEIGHT - 1). Leerzeilen und Einrückung
     /// werden ignoriert, damit Layouts bequem als Raw-Strings im Code stehen können.
     ///
-    /// Zeichen: `#` Wand, `.` Boden, `o` Fels, `_` Grube, `D` Tür (nur an Türpositionen).
+    /// Zeichen: `#` Wand, `.` Boden, `o` Fels, `_` Grube, `^` Stacheln, `b` Fass,
+    /// `D` Tür (nur an Türpositionen).
     pub fn from_ascii(text: &str) -> Result<Self, LayoutError> {
         let rows: Vec<&str> = text
             .lines()
@@ -468,6 +532,53 @@ mod tests {
         assert_ne!(p, q);
         let empty = RoomLayout::empty();
         assert_eq!(empty.nearest_floor(CENTER, &[]), Some(CENTER));
+    }
+
+    #[test]
+    fn spikes_are_walkable_hazards_and_barrels_are_solid() {
+        assert!(!Tile::Spikes.blocks_movement());
+        assert!(!Tile::Spikes.blocks_projectiles());
+        assert!(Tile::Spikes.is_hazard());
+        assert!(Tile::Barrel.blocks_movement());
+        assert!(Tile::Barrel.blocks_projectiles());
+        assert!(Tile::Barrel.blocks_flight());
+        assert!(!Tile::Pit.blocks_flight(), "Flieger überqueren Gruben");
+        assert!(!Tile::Floor.is_hazard());
+    }
+
+    #[test]
+    fn barrels_set_each_other_off() {
+        // Fässer bei (3,5), (4,5) und – außer Reichweite – (6,5); Fels bei (11,5).
+        let mut layout = RoomLayout::from_ascii(
+            "
+            ###############
+            #.............#
+            #.............#
+            #..bb.b....o..#
+            #.............#
+            #.............#
+            #.............#
+            #.............#
+            ###############
+        ",
+        )
+        .unwrap();
+        let chain = layout.chain_blast(GridPos::new(2, 5));
+        assert_eq!(
+            chain.centers,
+            vec![GridPos::new(2, 5), GridPos::new(3, 5), GridPos::new(4, 5)]
+        );
+        assert_eq!(
+            chain.destroyed,
+            vec![GridPos::new(3, 5), GridPos::new(4, 5)]
+        );
+        assert_eq!(layout.get(GridPos::new(4, 5)), Some(Tile::Floor));
+        assert_eq!(layout.get(GridPos::new(6, 5)), Some(Tile::Barrel));
+        assert_eq!(layout.get(GridPos::new(11, 5)), Some(Tile::Rock));
+        // Ohne Fässer in Reichweite: nur der Auslöser, nichts zerstört.
+        let quiet = layout.chain_blast(GridPos::new(1, 1));
+        assert_eq!(quiet.centers, vec![GridPos::new(1, 1)]);
+        assert!(quiet.destroyed.is_empty());
     }
 
     #[test]

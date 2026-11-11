@@ -7,18 +7,26 @@
 //! Aufteilung:
 //! - hier: Komponenten, Werte, Spawnen, einfache Gegner
 //! - `enemy/advanced.rs`: Springer, Teiler, Beschwörer
+//! - `enemy/tactical.rs`: Zünder, Geschützturm, Wespe
 //! - `enemy/bosses.rs`: die drei Bosse mit Angriffsphasen
 //!
 //! Alle Gegner bewegen sich über ein gemeinsames **Flowfield** zum Spieler
 //! (siehe `dungeon_gen::pathing`), das nur neu berechnet wird, wenn der
-//! Spieler die Kachel wechselt.
+//! Spieler die Kachel wechselt. Genau genommen sind es zwei: eines für Läufer
+//! (meidet Stacheln, kennt Gruben als Hindernis) und eines für Flieger.
 
 use bevy::prelude::*;
-use dungeon_gen::{EnemyKind, GridPos, meta, pathing::FlowField, spawns};
+use dungeon_gen::{
+    EnemyKind, GridPos, meta,
+    pathing::{FlowField, SPIKE_PENALTY},
+    spawns,
+};
 
 mod advanced;
 pub use bosses::BroodAi;
 mod bosses;
+mod tactical;
+pub use tactical::{Bomber, Turret, Wasp};
 
 use crate::{
     TILE_SIZE,
@@ -57,6 +65,9 @@ impl Plugin for EnemyPlugin {
                     charger_ai,
                     advanced::hopper_ai,
                     advanced::summoner_ai,
+                    tactical::bomber_ai,
+                    tactical::turret_ai,
+                    tactical::wasp_ai,
                     bosses::king_ai,
                     bosses::brood_ai,
                     bosses::warden_ai,
@@ -180,6 +191,13 @@ fn stats(kind: EnemyKind) -> EnemyStats {
         EnemyKind::Splitter => e(10.0, 1.0, 0.45, 1.6, 5.0),
         EnemyKind::Splitling => e(2.5, 1.0, 0.24, 3.4, 10.0),
         EnemyKind::Summoner => e(8.0, 1.0, 0.36, 1.8, 6.0),
+        // Wenig Leben, hohes Tempo, träge Lenkung: Die Fledermaus schießt
+        // am Spieler vorbei und kommt im Bogen zurück.
+        EnemyKind::Bat => e(3.0, 1.0, 0.28, 3.0, 5.0),
+        EnemyKind::Bomber => e(5.0, 1.0, 0.34, 2.9, 7.0),
+        // Tempo 0: Der Turm steht. Die hohe „Beschleunigung“ bremst Rückstoß sofort ab.
+        EnemyKind::Turret => e(9.0, 1.0, 0.40, 0.0, 20.0),
+        EnemyKind::Wasp => e(5.0, 1.0, 0.30, 3.2, 6.0),
         EnemyKind::Boss => e(50.0, 2.0, BOSS_HALF_TILES, 1.3, 3.0),
         EnemyKind::BroodMother => e(75.0, 2.0, 0.85, 1.1, 3.0),
         EnemyKind::Warden => e(100.0, 2.0, BOSS_HALF_TILES, 0.8, 2.0),
@@ -203,6 +221,10 @@ fn look(kind: EnemyKind, assets: &GameAssets) -> (&ActorArt, Color) {
             Color::srgb(0.65, 0.40, 0.85),
         ),
         EnemyKind::Summoner => (&a.summoner, Color::srgb(0.90, 0.85, 0.75)),
+        EnemyKind::Bat => (&a.bat, Color::srgb(0.45, 0.33, 0.62)),
+        EnemyKind::Bomber => (&a.bomber, Color::srgb(0.35, 0.36, 0.42)),
+        EnemyKind::Turret => (&a.turret, Color::srgb(0.55, 0.52, 0.48)),
+        EnemyKind::Wasp => (&a.wasp, Color::srgb(0.95, 0.78, 0.20)),
         EnemyKind::Boss => (&a.boss, Color::srgb(0.60, 0.20, 0.55)),
         EnemyKind::BroodMother => (&a.brood_mother, Color::srgb(0.45, 0.70, 0.30)),
         EnemyKind::Warden => (&a.warden, Color::srgb(0.55, 0.85, 1.0)),
@@ -249,7 +271,13 @@ pub fn spawn_enemy(commands: &mut Commands, spawn: EnemySpawn, assets: &GameAsse
             Vec2::ZERO,
             Body {
                 half_size: Vec2::splat(s.half_tiles * TILE_SIZE),
-                kind: BodyKind::Walker,
+                // Die Körperart entscheidet, welche Kacheln blockieren und
+                // welches Flowfield gilt – die KI selbst bleibt dieselbe.
+                kind: if spawn.kind.flies() {
+                    BodyKind::Flyer
+                } else {
+                    BodyKind::Walker
+                },
             },
             8.0,
         ),
@@ -270,8 +298,9 @@ pub fn spawn_enemy(commands: &mut Commands, spawn: EnemySpawn, assets: &GameAsse
     }
     // Das Verhalten hängt vom Typ ab: eine Komponente pro Verhalten.
     // Teiler und Splitlinge verfolgen einfach – ihr Besonderes passiert beim Tod.
+    // Die Fledermaus verfolgt ebenfalls, nur eben als `BodyKind::Flyer`.
     match spawn.kind {
-        EnemyKind::Chaser | EnemyKind::Splitter | EnemyKind::Splitling => {
+        EnemyKind::Chaser | EnemyKind::Splitter | EnemyKind::Splitling | EnemyKind::Bat => {
             entity.insert(Chaser);
         }
         EnemyKind::Shooter => {
@@ -287,6 +316,15 @@ pub fn spawn_enemy(commands: &mut Commands, spawn: EnemySpawn, assets: &GameAsse
         }
         EnemyKind::Summoner => {
             entity.insert(advanced::Summoner::default());
+        }
+        EnemyKind::Bomber => {
+            entity.insert(Bomber::default());
+        }
+        EnemyKind::Turret => {
+            entity.insert(Turret::default());
+        }
+        EnemyKind::Wasp => {
+            entity.insert(Wasp::new(spawn.pos));
         }
         EnemyKind::Boss => {
             entity.insert(bosses::KingAi::default());
@@ -333,13 +371,25 @@ pub fn spawn_room_enemies(
 
 // --- Gemeinsame Hilfen --------------------------------------------------------
 
-/// Distanzkarte zum Spieler für den aktuellen Raum.
+/// Distanzkarten zum Spieler für den aktuellen Raum.
 #[derive(Resource)]
 pub struct PlayerFlow {
     room: GridPos,
-    /// Layout-Stand, für den das Feld berechnet wurde (Bomben ändern Räume).
+    /// Layout-Stand, für den die Felder berechnet wurden (Bomben ändern Räume).
     revision: u32,
-    field: FlowField,
+    /// Für Läufer: Gruben blockieren, Stacheln kosten extra.
+    ground: FlowField,
+    /// Für Flieger: nur Massives blockiert.
+    air: FlowField,
+}
+
+impl PlayerFlow {
+    fn field(&self, kind: BodyKind) -> &FlowField {
+        match kind {
+            BodyKind::Flyer => &self.air,
+            BodyKind::Walker | BodyKind::Projectile => &self.ground,
+        }
+    }
 }
 
 fn update_flow_field(
@@ -350,33 +400,59 @@ fn update_flow_field(
 ) {
     let target = room.tile_at(player.0);
     let up_to_date = flow.is_some_and(|f| {
-        f.room == room.pos && f.revision == room.revision && f.field.target() == target
+        f.room == room.pos && f.revision == room.revision && f.ground.target() == target
     });
     if up_to_date {
         return;
     }
-    let field = FlowField::compute(target, |p| !room.blocks(p, BodyKind::Walker));
+    let ground = FlowField::compute_weighted(target, |p| {
+        if room.blocks(p, BodyKind::Walker) {
+            None
+        } else if room.layout.is_hazard(p) {
+            Some(SPIKE_PENALTY)
+        } else {
+            Some(0)
+        }
+    });
+    let air = FlowField::compute(target, |p| !room.blocks(p, BodyKind::Flyer));
     commands.insert_resource(PlayerFlow {
         room: room.pos,
         revision: room.revision,
-        field,
+        ground,
+        air,
     });
 }
 
-/// Richtung zum Spieler: direkt, wenn freie Bahn, sonst entlang des Flowfields.
+/// Richtung zum Spieler für Läufer – die häufigste Variante.
 fn chase_direction(
     flow: Option<&PlayerFlow>,
     room: &CurrentRoom,
     from: Vec2,
     player: Vec2,
 ) -> Vec2 {
+    chase_direction_for(BodyKind::Walker, flow, room, from, player)
+}
+
+/// Richtung zum Spieler: direkt, wenn freie Bahn, sonst entlang des Flowfields.
+/// Läufer gehen nur dann direkt, wenn auf der Linie keine Stacheln liegen.
+fn chase_direction_for(
+    kind: BodyKind,
+    flow: Option<&PlayerFlow>,
+    room: &CurrentRoom,
+    from: Vec2,
+    player: Vec2,
+) -> Vec2 {
     let direct = (player - from).normalize_or_zero();
-    if room.line_of_sight(from, player, BodyKind::Walker) {
+    let clear = match kind {
+        BodyKind::Walker => room.safe_walk_line(from, player),
+        BodyKind::Flyer | BodyKind::Projectile => room.line_of_sight(from, player, kind),
+    };
+    if clear {
         return direct;
     }
     let tile = room.tile_at(from);
     flow.filter(|f| f.room == room.pos)
-        .and_then(|f| f.field.next_step(tile))
+        .and_then(|f| f.field(kind).next_step(tile))
         .map(|next| (room.tile_center(next) - from).normalize_or_zero())
         .unwrap_or(direct)
 }
@@ -423,11 +499,11 @@ fn chaser_ai(
     room: Res<CurrentRoom>,
     flow: Option<Res<PlayerFlow>>,
     player: Single<&Position, With<Player>>,
-    mut query: Query<(&Position, &mut Velocity, &Mobility), (With<Chaser>, Without<Asleep>)>,
+    mut query: Query<(&Position, &mut Velocity, &Mobility, &Body), (With<Chaser>, Without<Asleep>)>,
 ) {
     let dt = time.delta_secs();
-    for (pos, mut vel, mob) in &mut query {
-        let dir = chase_direction(flow.as_deref(), &room, pos.0, player.0);
+    for (pos, mut vel, mob, body) in &mut query {
+        let dir = chase_direction_for(body.kind, flow.as_deref(), &room, pos.0, player.0);
         steer(&mut vel, dir * mob.speed * TILE_SIZE, mob.acceleration, dt);
     }
 }

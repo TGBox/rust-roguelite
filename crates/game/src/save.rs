@@ -36,7 +36,9 @@ use crate::{
 
 /// Bei inkompatiblen Änderungen erhöhen – alte Stände werden dann ignoriert.
 /// Version 2: neue Raumtypen verändern die Etagen – alte Stände passen nicht mehr.
-pub const SAVE_VERSION: u32 = 2;
+/// Version 3: neue Raumvorlagen (Stacheln, Fässer) und Gegner – derselbe Seed
+/// ergibt andere Räume.
+pub const SAVE_VERSION: u32 = 3;
 
 pub struct SavePlugin;
 

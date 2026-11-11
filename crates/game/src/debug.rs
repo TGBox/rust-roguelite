@@ -126,6 +126,7 @@ fn draw_hitboxes(mut gizmos: Gizmos, query: Query<(&Transform, &Body)>) {
     for (transform, body) in &query {
         let color = match body.kind {
             BodyKind::Walker => Color::srgb(0.2, 1.0, 0.3),
+            BodyKind::Flyer => Color::srgb(0.3, 0.8, 1.0),
             BodyKind::Projectile => Color::srgb(1.0, 0.3, 0.3),
         };
         gizmos.rect_2d(

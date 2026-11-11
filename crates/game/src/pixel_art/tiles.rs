@@ -5,7 +5,7 @@
 //! lebendige, aber reproduzierbare Oberflächen.
 
 use super::canvas::{Canvas, jitter, mix, noise, shade};
-use super::maps::{KEYHOLE, KEYHOLE_PALETTE, ROCK, ROCK_PALETTE};
+use super::maps::{BARREL, BARREL_PALETTE, KEYHOLE, KEYHOLE_PALETTE, ROCK, ROCK_PALETTE};
 
 /// Kantenlänge einer Kachel in Bildpixeln (× `PIXEL_SCALE` = `TILE_SIZE`).
 pub const TILE_PIXELS: u32 = 16;
@@ -20,6 +20,10 @@ const WOOD: [u8; 4] = [118, 76, 42, 255];
 const WOOD_DARK: [u8; 4] = [72, 45, 25, 255];
 const IRON: [u8; 4] = [70, 70, 78, 255];
 const GOLD: [u8; 4] = [210, 170, 55, 255];
+const STEEL: [u8; 4] = [150, 155, 170, 255];
+const STEEL_LIGHT: [u8; 4] = [225, 230, 240, 255];
+const STEEL_DARK: [u8; 4] = [90, 92, 105, 255];
+const SPIKE_HOLE: [u8; 4] = [20, 16, 18, 255];
 
 /// Steinplatten: leicht verrauschte Fläche, dunkle Fuge unten und rechts.
 /// Variante 1 bekommt einen Riss, Variante 2 Moos, Variante 3 Kiesel.
@@ -118,6 +122,33 @@ pub fn wall_cracked() -> Canvas {
 pub fn rock() -> Canvas {
     let mut c = floor(0);
     c.draw_ascii_centered(ROCK, ROCK_PALETTE);
+    c
+}
+
+/// Stacheln: Bodenkachel mit 3 × 3 kleinen Stahlspitzen. Jede Spitze ist
+/// 3 Pixel breit: helle Spitze oben, darunter Licht- und Schattenseite,
+/// ganz unten das dunkle Loch, aus dem sie ragt.
+pub fn spikes() -> Canvas {
+    let mut c = floor(0);
+    for gy in 0..3 {
+        for gx in 0..3 {
+            let (x, y) = (2 + gx * 5, 1 + gy * 5);
+            c.set(x + 1, y, STEEL_LIGHT);
+            c.set(x, y + 1, STEEL);
+            c.set(x + 1, y + 1, STEEL_LIGHT);
+            c.set(x + 2, y + 1, STEEL_DARK);
+            for dx in 0..3 {
+                c.set(x + dx, y + 2, SPIKE_HOLE);
+            }
+        }
+    }
+    c
+}
+
+/// Pulverfass: Bodenkachel mit Fass darauf.
+pub fn barrel() -> Canvas {
+    let mut c = floor(0);
+    c.draw_ascii_centered(BARREL, BARREL_PALETTE);
     c
 }
 
@@ -222,6 +253,8 @@ mod tests {
             wall(),
             rock(),
             pit(),
+            spikes(),
+            barrel(),
             door_open(),
             door_closed(),
             door_keyed(),

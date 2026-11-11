@@ -14,7 +14,7 @@ use crate::{
     assets::GameAssets,
     camera::MainCamera,
     combat::{Frozen, Poisoned},
-    enemy::{Asleep, BroodAi, Champion, Charger, Enemy},
+    enemy::{Asleep, Bomber, BroodAi, Champion, Charger, Enemy, Turret, Wasp},
     physics::{Position, Velocity},
     pixel_art::canvas::noise,
     player::{Player, PlayerInput},
@@ -353,12 +353,17 @@ fn tint_enemies(
             Has<Champion>,
             Option<&Charger>,
             Option<&BroodAi>,
+            Option<&Bomber>,
+            Option<&Turret>,
+            Option<&Wasp>,
         ),
         With<Enemy>,
     >,
 ) {
     let t = time.elapsed_secs();
-    for (mut sprite, asleep, frozen, poisoned, champion, charger, brood) in &mut query {
+    for (mut sprite, asleep, frozen, poisoned, champion, charger, brood, bomber, turret, wasp) in
+        &mut query
+    {
         let mut color = if frozen {
             Color::srgb(0.55, 0.85, 1.0)
         } else if poisoned {
@@ -390,6 +395,17 @@ fn tint_enemies(
             } else if charger.is_stunned() {
                 color = Color::srgb(0.65, 0.65, 0.75);
             }
+        }
+        // Zünder, Turm und Wespe warnen gleich: rotes Pulsieren, das schneller
+        // wird. `Option::and_then` mit einem Methodenpfad (`Bomber::fuse_progress`)
+        // spart die Closure `|b| b.fuse_progress()`; `or` nimmt den ersten Treffer.
+        let warning = bomber
+            .and_then(Bomber::fuse_progress)
+            .or(turret.and_then(Turret::windup_progress))
+            .or(wasp.and_then(Wasp::windup_progress));
+        if let Some(progress) = warning {
+            let pulse = 0.5 + 0.5 * (t * (20.0 + 30.0 * progress)).sin();
+            color = Color::srgb(1.0, 1.0 - 0.6 * pulse, 1.0 - 0.6 * pulse);
         }
         sprite.color = color;
     }

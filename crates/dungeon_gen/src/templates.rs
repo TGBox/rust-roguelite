@@ -3,6 +3,10 @@
 //! Regeln (werden von den Tests erzwungen):
 //! - Die Kacheln direkt vor den vier Türpositionen sind Boden.
 //! - Alle begehbaren Kacheln hängen zusammen – kein eingesperrter Bereich.
+//! - Stacheln sind nie der einzige Weg: Jede stachelfreie Kachel ist ohne
+//!   einen Schritt auf Stacheln erreichbar.
+//!
+//! Zeichen: `.` Boden, `o` Fels, `_` Grube, `^` Stacheln, `b` Pulverfass.
 //!
 //! Die Türen selbst sind hier noch Wand; M4 öffnet sie je nach Nachbarräumen.
 //! Später (M6) wandern die Vorlagen in RON-Dateien.
@@ -144,6 +148,77 @@ const NORMAL: &[RoomTemplate] = &[
             ###############
         ",
     },
+    // --- Terrain: Stacheln und Pulverfässer ---
+    RoomTemplate {
+        name: "spike_field",
+        ascii: "
+            ###############
+            #.............#
+            #..^^.....^^..#
+            #..^^.....^^..#
+            #.............#
+            #..^^.....^^..#
+            #..^^.....^^..#
+            #.............#
+            ###############
+        ",
+    },
+    RoomTemplate {
+        name: "spike_cross",
+        ascii: "
+            ###############
+            #.............#
+            #.....^.^.....#
+            #....^...^....#
+            #.............#
+            #....^...^....#
+            #.....^.^.....#
+            #.............#
+            ###############
+        ",
+    },
+    RoomTemplate {
+        name: "powder_room",
+        ascii: "
+            ###############
+            #.............#
+            #.ob.......bo.#
+            #.............#
+            #....b...b....#
+            #.............#
+            #.ob.......bo.#
+            #.............#
+            ###############
+        ",
+    },
+    RoomTemplate {
+        name: "barrel_alley",
+        ascii: "
+            ###############
+            #.............#
+            #.o.o.b.b.o.o.#
+            #.............#
+            #.............#
+            #.............#
+            #.o.o.b.b.o.o.#
+            #.............#
+            ###############
+        ",
+    },
+    RoomTemplate {
+        name: "islands",
+        ascii: "
+            ###############
+            #.............#
+            #.__..^.^..__.#
+            #.__.......__.#
+            #.............#
+            #.__.......__.#
+            #.__..^.^..__.#
+            #.............#
+            ###############
+        ",
+    },
 ];
 
 const BOSS: &[RoomTemplate] = &[RoomTemplate {
@@ -207,6 +282,20 @@ const CHALLENGE: &[RoomTemplate] = &[
             #.............#
             #.............#
             #...__...__...#
+            #.............#
+            ###############
+        ",
+    },
+    RoomTemplate {
+        name: "spike_arena",
+        ascii: "
+            ###############
+            #.............#
+            #..^..b.b..^..#
+            #.............#
+            #.............#
+            #.............#
+            #..^..b.b..^..#
             #.............#
             ###############
         ",
@@ -319,6 +408,51 @@ mod tests {
                 t.name
             );
         }
+    }
+
+    #[test]
+    fn spikes_are_never_the_only_way() {
+        for t in all_templates() {
+            let layout = t.layout();
+            let safe: BTreeSet<GridPos> = layout
+                .iter()
+                .filter(|&(p, _)| !layout.blocks_movement(p) && !layout.is_hazard(p))
+                .map(|(p, _)| p)
+                .collect();
+
+            let start = inside_door(Direction::North);
+            assert!(
+                safe.contains(&start),
+                "Vorlage '{}': Stacheln am Eingang",
+                t.name
+            );
+            let mut reached = BTreeSet::from([start]);
+            let mut queue = VecDeque::from([start]);
+            while let Some(p) = queue.pop_front() {
+                for (_, n) in p.neighbors() {
+                    if safe.contains(&n) && reached.insert(n) {
+                        queue.push_back(n);
+                    }
+                }
+            }
+            assert_eq!(
+                reached.len(),
+                safe.len(),
+                "Vorlage '{}': Bereich nur über Stacheln erreichbar",
+                t.name
+            );
+        }
+    }
+
+    #[test]
+    fn terrain_templates_exist() {
+        use crate::Tile;
+        let has = |tile: Tile| {
+            pool(RoomKind::Normal)
+                .iter()
+                .any(|t| t.layout().iter().any(|(_, found)| found == tile))
+        };
+        assert!(has(Tile::Spikes) && has(Tile::Barrel) && has(Tile::Pit));
     }
 
     #[test]
