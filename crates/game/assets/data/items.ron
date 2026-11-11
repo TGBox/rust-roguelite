@@ -1,6 +1,7 @@
 // Item-Definitionen. Mit `cargo run --features dev` werden Änderungen
 // beim Speichern sofort ins laufende Spiel übernommen.
 (
+    version: 2,
     items: [
         (
             id: "onion",
@@ -308,6 +309,254 @@
             ],
         ),
         (
+            id: "venom_gland",
+            name: "Giftdrüse",
+            description: "30 % Chance: Gift (1 Schaden/s, 3 s)",
+            pools: [
+                Treasure,
+                Shop,
+            ],
+            price: 15,
+            effects: [
+                Poison(
+                    chance: 0.3,
+                    damage_per_sec: 1.0,
+                    secs: 3.0,
+                ),
+            ],
+        ),
+        (
+            id: "frost_crystal",
+            name: "Frostkristall",
+            description: "15 % Chance: Gegner 1 s eingefroren",
+            pools: [
+                Treasure,
+            ],
+            price: 15,
+            effects: [
+                Freeze(
+                    chance: 0.15,
+                    secs: 1.0,
+                ),
+            ],
+        ),
+        (
+            id: "rubber_ball",
+            name: "Gummiball",
+            description: "Schüsse prallen zweimal von Wänden ab",
+            pools: [
+                Treasure,
+                Shop,
+            ],
+            price: 15,
+            effects: [
+                Bounce(2),
+                Stat((
+                    stat: Range,
+                    op: Add(1.0),
+                )),
+            ],
+        ),
+        (
+            id: "lucky_clover",
+            name: "Glücksklee",
+            description: "12 % Chance auf dreifachen Schaden",
+            pools: [
+                Treasure,
+                Shop,
+            ],
+            price: 15,
+            effects: [
+                Crit(
+                    chance: 0.12,
+                    multiplier: 3.0,
+                ),
+            ],
+        ),
+        (
+            id: "collector",
+            name: "Sammlerwahn",
+            description: "Schaden +0,2 pro Item",
+            pools: [
+                Treasure,
+                Boss,
+            ],
+            price: 20,
+            effects: [
+                PerItem((
+                    stat: Damage,
+                    op: Add(0.2),
+                )),
+            ],
+        ),
+        (
+            id: "glass_cannon",
+            name: "Glaskanone",
+            description: "Schaden ×2, aber -1 Herz",
+            pools: [
+                Boss,
+            ],
+            price: 25,
+            effects: [
+                Stat((
+                    stat: Damage,
+                    op: Mul(2.0),
+                )),
+                MaxHealth(-2),
+            ],
+        ),
+        (
+            id: "hourglass",
+            name: "Sanduhr",
+            description: "Feuerrate +20 %, Schussgeschwindigkeit -1",
+            pools: [
+                Treasure,
+            ],
+            price: 10,
+            effects: [
+                Stat((
+                    stat: FireRate,
+                    op: Mul(1.2),
+                )),
+                Stat((
+                    stat: ShotSpeed,
+                    op: Add(-1.0),
+                )),
+            ],
+        ),
+        (
+            id: "iron_skin",
+            name: "Eisenhaut",
+            description: "+1 Herz, Tempo -0,5",
+            pools: [
+                Shop,
+                Boss,
+            ],
+            price: 15,
+            effects: [
+                MaxHealth(2),
+                Stat((
+                    stat: MoveSpeed,
+                    op: Add(-0.5),
+                )),
+            ],
+        ),
+        (
+            id: "key_ring",
+            name: "Schlüsselbund",
+            description: "6 % Chance auf einen Schlüssel pro Kill",
+            pools: [
+                Shop,
+            ],
+            price: 10,
+            effects: [
+                OnKill(
+                    chance: 0.06,
+                    reward: Keys(1),
+                ),
+            ],
+        ),
+        (
+            id: "bomb_bag",
+            name: "Bombenbeutel",
+            description: "8 % Chance auf eine Bombe pro Kill",
+            pools: [
+                Treasure,
+                Shop,
+            ],
+            price: 10,
+            effects: [
+                OnKill(
+                    chance: 0.08,
+                    reward: Bombs(1),
+                ),
+            ],
+        ),
+        (
+            id: "salve",
+            name: "Heilsalbe",
+            description: "Aktiv (3 Räume): heilt ein Herz",
+            pools: [
+                Treasure,
+                Shop,
+            ],
+            price: 15,
+            effects: [
+                Active(
+                    kind: Heal(2),
+                    charges: 3,
+                ),
+            ],
+        ),
+        (
+            id: "thunder_drum",
+            name: "Donnertrommel",
+            description: "Aktiv (3 Räume): 8 Schaden an allen Gegnern",
+            pools: [
+                Treasure,
+                Boss,
+            ],
+            price: 20,
+            effects: [
+                Active(
+                    kind: Shockwave(
+                        damage: 8.0,
+                    ),
+                    charges: 3,
+                ),
+            ],
+        ),
+        (
+            id: "frost_horn",
+            name: "Frosthorn",
+            description: "Aktiv (2 Räume): friert alle Gegner 3 s ein",
+            pools: [
+                Treasure,
+            ],
+            price: 20,
+            effects: [
+                Active(
+                    kind: FreezeAll(
+                        secs: 3.0,
+                    ),
+                    charges: 2,
+                ),
+            ],
+        ),
+        (
+            id: "aegis",
+            name: "Ägide",
+            description: "Aktiv (2 Räume): 4 s unverwundbar",
+            pools: [
+                Shop,
+                Boss,
+            ],
+            price: 20,
+            effects: [
+                Active(
+                    kind: Shield(
+                        secs: 4.0,
+                    ),
+                    charges: 2,
+                ),
+            ],
+        ),
+        (
+            id: "gold_purse",
+            name: "Goldbeutel",
+            description: "Aktiv (3 Räume): +6 Münzen",
+            pools: [
+                Treasure,
+            ],
+            price: 10,
+            effects: [
+                Active(
+                    kind: Coins(6),
+                    charges: 3,
+                ),
+            ],
+        ),
+        (
             id: "breakfast",
             name: "Frühstück",
             description: "+1 Herz",
@@ -315,6 +564,105 @@
             price: 5,
             effects: [
                 MaxHealth(2),
+            ],
+        ),
+    ],
+    synergies: [
+        (
+            name: "Giftpfeile",
+            description: "Durchschlagende Schüsse vergiften öfter",
+            requires: [
+                "venom_gland",
+                "drill",
+            ],
+            effects: [
+                Poison(
+                    chance: 0.3,
+                    damage_per_sec: 1.5,
+                    secs: 3.0,
+                ),
+            ],
+        ),
+        (
+            name: "Eissturm",
+            description: "Frost-Chance +20 %, länger eingefroren",
+            requires: [
+                "frost_crystal",
+                "frost_horn",
+            ],
+            effects: [
+                Freeze(
+                    chance: 0.2,
+                    secs: 1.5,
+                ),
+            ],
+        ),
+        (
+            name: "Querschläger",
+            description: "Ein Abpraller mehr, Schaden +0,5",
+            requires: [
+                "rubber_ball",
+                "trident",
+            ],
+            effects: [
+                Bounce(1),
+                Stat((
+                    stat: Damage,
+                    op: Add(0.5),
+                )),
+            ],
+        ),
+        (
+            name: "Glückspilz",
+            description: "Krit-Chance +10 %",
+            requires: [
+                "lucky_clover",
+                "gold_rush",
+            ],
+            effects: [
+                Crit(
+                    chance: 0.1,
+                    multiplier: 3.0,
+                ),
+            ],
+        ),
+        (
+            name: "Blutrausch",
+            description: "Schaden +1",
+            requires: [
+                "berserker",
+                "vampire_fang",
+            ],
+            effects: [
+                Stat((
+                    stat: Damage,
+                    op: Add(1.0),
+                )),
+            ],
+        ),
+        (
+            name: "Goldader",
+            description: "Noch eine Münze pro geräumtem Raum",
+            requires: [
+                "piggy_bank",
+                "payday",
+            ],
+            effects: [
+                OnRoomClear(Coins(1)),
+            ],
+        ),
+        (
+            name: "Scharfschütze",
+            description: "Suchende, durchschlagende Schüsse: Schaden +50 %",
+            requires: [
+                "magnet_eye",
+                "drill",
+            ],
+            effects: [
+                Stat((
+                    stat: Damage,
+                    op: Mul(1.5),
+                )),
             ],
         ),
     ],
